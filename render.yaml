@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: job-auto-apply
+    runtime: python
+    pythonVersion: 3.11
+    buildCommand: |
+      pip install -r requirements.txt && \
+      playwright install chromium && \
+      playwright install-deps chromium && \
+      mkdir -p uploads data logs
+    startCommand: python main.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11
+      - key: PORT
+        value: 8000
+      - key: RUN_HOUR
+        value: 8
+      - key: RUN_MINUTE
+        value: 0

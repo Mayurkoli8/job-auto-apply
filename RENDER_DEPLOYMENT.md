@@ -25,7 +25,8 @@
 
 ### Advanced Settings
 - **Auto Deploy:** Enable (redeploy on git push)
-- **Instance Type:** Free Tier (or upgrade as needed)
+- **Instance Type:** Free Tier ✅
+- **Database:** See Step 5 for options
 
 ## Step 4: Add Environment Variables
 
@@ -69,27 +70,38 @@ DATABASE_URL=sqlite:///./job_applications.db
 
 ## Step 5: Handle File Uploads & Database
 
-### Option A: Persistent Storage (Recommended)
-1. In Render dashboard, go to "Disks"
-2. Create a new disk:
-   - **Mount Path:** `/app/data`
-   - **Size:** 1 GB (free tier)
-3. Also create for uploads:
-   - **Mount Path:** `/app/uploads`
-   - **Size:** 1 GB (free tier)
+### ⚠️ Free Tier Limitation
+**Render free tier does NOT include persistent storage.** Data will be lost when the instance restarts or redeploys.
 
-### Option B: External Database (PostgreSQL)
-If you need a database that persists across deployments:
-1. Create a new PostgreSQL database on Render
-2. Add `DATABASE_URL=postgresql://user:pass@host/db` to environment
+### Option A: SQLite (Free, ephemeral)
+- Uses SQLite in-memory/local storage
+- ✅ Works on free tier
+- ⚠️ Data lost on restart/redeploy
+- Good for: Testing, development, low volume
+- Set: `DATABASE_URL=sqlite:///./job_applications.db`
 
-## Step 6: Upload Resume
+### Option B: PostgreSQL on Render (Recommended for Production)
+1. Go to Render dashboard → Create new PostgreSQL database
+2. Note the database connection string
+3. Add to environment: `DATABASE_URL=postgresql://user:pass@...`
+4. Cost: ~$15-50/month depending on usage
+
+### Option C: External Storage (S3, GitHub, etc.)
+For resume files and backups:
+- **AWS S3** (~$0.023/GB): Store resumes, backups
+- **GitHub** (Free): Commit results to private repo
+- **MongoDB Atlas** (Free tier 512MB): Store job data
+
+For free tier: Just upload resume manually each session.
+
+## Step 6: Upload Resume & Test
 
 1. Wait for first deployment to complete
-2. The app will create the `uploads/` folder
-3. Manual upload:
-   - SSH into Render service OR
-   - Use API endpoint if you add file upload capability
+2. Visit your app URL (e.g., `https://job-auto-apply.onrender.com`)
+3. Click "Upload Resume" and select your resume file
+4. **Important:** Upload it again after each restart/redeploy (free tier limitation)
+
+**For Persistent Resume:** If using Option B/C, configure S3 or GitHub to auto-backup
 
 ## Step 7: Deploy
 
@@ -101,24 +113,32 @@ If you need a database that persists across deployments:
 ## Troubleshooting
 
 ### Build fails with Playwright issues
-- Ensure `playwright install chromium` is in build command
+- Ensure `playwright install chromium` is in build command ✓
 - On Render, it automatically handles Linux dependencies
 
 ### Environment variables not loading
 - In `config.py`, ensure you're using `pydantic-settings` to load from Render env
 - Render passes env vars directly, no need for `.env` file
 
-### Database not persisting
-- Use mounted disks (not SQLite on ephemeral instance)
-- Or switch to Render's PostgreSQL
+### Data lost after restart/redeploy
+- **This is normal on free tier** — use SQLite but expect data to reset
+- For persistence: Upgrade to Standard tier or use external database (PostgreSQL)
 
-### Scheduler not running at scheduled time
-- Render free tier instances may spin down
-- Consider adding a cron endpoint to trigger manually or upgrade instance
+### Scheduler doesn't run at scheduled time
+- **Free tier instances spin down after 15 min inactivity**
+- Scheduler won't wake the instance automatically
+- Solutions:
+  1. **Upgrade to Standard tier** (~$7/month) — instance always on
+  2. **Add a cron trigger** via external service (Uptime Robot, AWS Lambda)
+  3. **Manual runs only** — use dashboard buttons to run on demand
 
-### Large dependencies fail
-- Free tier has limited build time (15 min)
-- If build fails, upgrade to standard tier
+### Resume file disappears after restart
+- **Free tier has ephemeral storage** — all local files are lost
+- Solution: Upload resume again OR use external storage (S3, GitHub)
+
+### Large dependencies fail during build
+- Free tier has 15 min build time limit
+- If build fails: Reduce dependencies or upgrade to Standard tier
 
 ## Monitoring
 
@@ -126,16 +146,39 @@ If you need a database that persists across deployments:
 2. Check **Metrics** for CPU/memory usage
 3. Set up **Notifications** for deployment failures
 
-## Cost
-- **Free tier:** Always free (instance may spin down with inactivity)
-- **Standard tier:** ~$7/month (keeps instance always running)
-- **Disk storage:** $0.30/GB/month
+## Cost & Free Tier Limits
+
+| Tier | Price | Storage | Scheduler | Auto-wake | Best For |
+|------|-------|---------|-----------|-----------|----------|
+| **Free** | $0 | None (ephemeral) | No | No | Testing, dev, manual runs |
+| **Standard** | ~$7/mo | — | ✅ Works | ✅ 24/7 on | Production, automated jobs |
+
+**Free tier details:**
+- Instance spins down after 15 min inactivity
+- All data lost on restart
+- Great for testing, but not for production automation
+- Scheduler won't work reliably
+
+**Recommended for production:** Upgrade to Standard ($7/month) + PostgreSQL ($15/month)
 
 ## Next Steps
 
-After deployment, consider:
-1. ✅ Manually upload your resume to `uploads/resume.pdf`
-2. ✅ Test the application with a few job searches
-3. ✅ Set up email notifications for successful applications
-4. ✅ Monitor logs for any errors
-5. ✅ Upgrade to Standard tier if you want guaranteed uptime
+### ✅ Free Tier (Testing):
+1. Upload your resume to `uploads/resume.pdf` via dashboard
+2. Click "Email Only" to test (faster than full run)
+3. Check logs for any errors
+4. Run full pipeline if test succeeds
+5. Data will reset on instance restart — that's expected
+
+### 🚀 Production Setup (Recommended):
+1. Upgrade to **Standard tier** (~$7/month)
+2. Add **PostgreSQL** database (~$15/month)
+3. Configure scheduler — will run reliably at 8 AM
+4. Set up email notifications for successful applications
+5. Monitor logs for errors
+6. Data persists across restarts ✓
+
+### 💾 Storage Options:
+- **Free + Persistence:** Add external DB (PostgreSQL, MongoDB Atlas free tier)
+- **Free + Manual:** Commit results to GitHub after each run
+- **Free + S3:** Store resume & backups in AWS S3 (~$1/month)

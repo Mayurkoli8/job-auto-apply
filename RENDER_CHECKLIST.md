@@ -66,14 +66,25 @@ MIN_DELAY_SECONDS = 3
 MAX_DELAY_SECONDS = 12
 ```
 
-### 5. Add Persistent Storage (for Database & Resume)
-- [ ] Go to **Disks** tab
-- [ ] Create new disk:
-  - **Mount Path:** `/app/data`
-  - **Size:** 1 GB
-- [ ] Create another disk:
-  - **Mount Path:** `/app/uploads`
-  - **Size:** 1 GB
+### 5. Add Persistent Storage ⚠️ Free Tier Note
+**Free tier does NOT include persistent disks.** Choose one:
+
+**Option A: Free + Ephemeral (Testing)**
+- Skip this step
+- Data will reset on restart
+- Resume must be re-uploaded each time
+- Good for: Testing, low volume
+
+**Option B: Add PostgreSQL Database**
+- Go to Render dashboard → Create PostgreSQL
+- Note the connection string
+- Add to Environment: `DATABASE_URL=postgresql://...`
+- Cost: ~$15/month
+
+**Option C: Skip Storage (Use Default SQLite)**
+- Data stored in ephemeral storage
+- Will reset on restart
+- Fine for occasional testing
 
 ### 6. Deploy
 - [ ] Click "Create Web Service"
@@ -89,16 +100,25 @@ MAX_DELAY_SECONDS = 12
 
 ## Important Notes
 
+## Important Notes
+
 ✅ **What's Done:**
 - `render.yaml` configured with correct build & start commands
 - `main.py` updated to use `PORT` environment variable
 - All dependencies listed in `requirements.txt`
 
-⚠️ **Important:**
-- Free tier instances may sleep after 15 minutes of inactivity
-- For production, upgrade to **Standard tier** (~$7/month)
-- Scheduler will pause if instance is asleep
-- Resume file must be uploaded manually after first deployment
+⚠️ **Free Tier Limitations:**
+- ❌ No persistent storage (data resets on restart)
+- ❌ Instance spins down after 15 min inactivity
+- ❌ Scheduler won't run reliably
+- ✅ **Good for:** Testing, manual runs only
+- ✅ **For Production:** Upgrade to Standard tier (~$7/mo) + PostgreSQL (~$15/mo)
+
+📝 **What to Expect:**
+- Resume file disappears after restart (re-upload via dashboard)
+- Application history lost on restart
+- Scheduler won't trigger automatically unless instance is awake
+- Run manually via dashboard for testing
 
 ## Monitoring
 
@@ -110,11 +130,12 @@ MAX_DELAY_SECONDS = 12
 
 | Issue | Solution |
 |-------|----------|
-| Build fails | Check Render logs - likely Playwright issue. Contact support if needed. |
+| Data lost after restart | Normal on free tier - use Standard tier for persistence |
+| Resume disappeared | Free tier storage is ephemeral - re-upload before each run |
+| Scheduler doesn't run | Free tier instance sleeps after 15 min - upgrade to Standard or run manually |
+| Build fails | Check Render logs. Try clearing build cache in settings. |
 | App crashes after deploy | Check environment variables are set correctly |
-| Scheduler doesn't run | Free tier may auto-sleep. Upgrade to Standard tier or check logs. |
-| Resume upload fails | Ensure `/app/uploads` disk is mounted |
-| Database not persisting | Ensure `/app/data` disk is mounted |
+| Scheduler doesn't trigger at 8 AM | Free tier needs manual trigger or Standard tier upgrade |
 
 ## API Endpoints
 - `GET /` - Dashboard

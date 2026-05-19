@@ -1,0 +1,15 @@
+.env
+*.pyc
+__pycache__/
+.playwright/
+uploads/
+data/
+logs/
+*.db
+.DS_Store
+node_modules/
+dist/
+build/
+.venv/
+venv/
+*.egg-info/

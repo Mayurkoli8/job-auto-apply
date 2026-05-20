@@ -2,19 +2,79 @@ services:
   - type: web
     name: job-auto-apply
     runtime: python
-    pythonVersion: 3.11
-    buildCommand: |
-      pip install -r requirements.txt && \
-      playwright install chromium && \
-      playwright install-deps chromium && \
-      mkdir -p uploads data logs
+    plan: free           # 100% free — no disk, no paid add-ons
+
+    buildCommand: >
+      pip install -r requirements.txt &&
+      playwright install chromium &&
+      playwright install-deps chromium
+
     startCommand: python main.py
+    healthCheckPath: /api/ping
+
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.11
-      - key: PORT
-        value: 8000
+      # ── AI (FREE) ────────────────────────────────────────────────────────
+      - key: GEMINI_API_KEY
+        sync: false                    # paste your key in Render dashboard
+      - key: GEMINI_MODEL
+        value: gemini-1.5-flash
+
+      # ── Resume (your PDF is already hosted — just leave this as-is) ──────
+      - key: RESUME_URL
+        value: "https://mayurkoli.mentesa.live/Mayur%20Koli%20Resume%202026%20AI%20Engineer.pdf"
+      - key: RESUME_PATH
+        value: /tmp/resume.pdf
+
+      # ── Database (free — /tmp survives sleep, resets only on redeploy) ───
+      - key: DATABASE_PATH
+        value: /tmp/jobs.db
+
+      # ── Email ─────────────────────────────────────────────────────────────
+      - key: GMAIL_ADDRESS
+        sync: false
+      - key: GMAIL_APP_PASSWORD
+        sync: false
+
+      # ── Your profile ──────────────────────────────────────────────────────
+      - key: USER_FULL_NAME
+        value: Mayur Koli
+      - key: USER_EMAIL
+        sync: false                    # your email address
+      - key: USER_PHONE
+        sync: false
+      - key: USER_LOCATION
+        value: India (Open to Remote)
+      - key: USER_LINKEDIN
+        sync: false
+      - key: USER_GITHUB
+        sync: false
+      - key: USER_PORTFOLIO
+        value: "https://mayurkoli.mentesa.live"
+
+      # ── Job search ────────────────────────────────────────────────────────
+      - key: JOB_TITLES
+        value: '["AI Engineer", "ML Engineer", "LLM Engineer", "Python Developer", "Backend Engineer"]'
+      - key: JOB_KEYWORDS
+        value: '["Python", "LLM", "Machine Learning", "FastAPI", "RAG", "NLP", "TensorFlow", "PyTorch"]'
+      - key: JOB_LOCATION
+        value: Remote
+      - key: DAILY_LIMIT
+        value: "50"
       - key: RUN_HOUR
-        value: 8
+        value: "8"
       - key: RUN_MINUTE
-        value: 0
+        value: "0"
+      - key: TIMEZONE
+        value: Asia/Kolkata            # IST — runs at 8:00 AM IST
+
+      # ── Optional free extras ─────────────────────────────────────────────
+      - key: HUNTER_API_KEY
+        sync: false
+      - key: ADZUNA_APP_ID
+        sync: false
+      - key: ADZUNA_APP_KEY
+        sync: false
+      - key: TWOCAPTCHA_API_KEY
+        sync: false
+
+# No disk section = completely free ($0.00/month)

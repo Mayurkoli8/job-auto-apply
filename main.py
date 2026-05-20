@@ -35,7 +35,6 @@ from orchestrator import run_daily_pipeline, run_email_only_pipeline
 from email_sender import test_email_config
 
 import uvicorn
-import os
 
 # ── Scheduler ─────────────────────────────────────────────────────────────────
 
@@ -65,12 +64,11 @@ def setup_scheduler():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    Path("uploads").mkdir(exist_ok=True)
-    Path("data").mkdir(exist_ok=True)
-    Path("logs").mkdir(exist_ok=True)
+    from startup import run_all
+    run_all()           # hydrate resume from env var, check config, create dirs
     init_db()
     setup_scheduler()
-    print("[App] Job Auto-Apply started")
+    print("[App] Job Auto-Apply started ✅")
     yield
     # Shutdown
     scheduler.shutdown()
@@ -213,6 +211,12 @@ async def health():
         "scheduler": scheduler.running,
     }
 
+@app.get("/api/ping")
+async def ping():
+    """Lightweight keep-alive endpoint — hit this every 10 min via cron-job.org
+    to prevent Render free tier from spinning down before the 8 AM scheduler fires."""
+    return {"pong": True, "time": datetime.utcnow().isoformat()}
+
 
 # ── Serve dashboard ───────────────────────────────────────────────────────────
 
@@ -323,7 +327,8 @@ if __name__ == "__main__":
     elif "--test-email" in args:
         asyncio.run(test_email_config())
     else:
-        port = int(os.getenv("PORT", 8000))
+        import os
+        port = int(os.environ.get("PORT", 8000))  # Render injects PORT
         uvicorn.run(
             "main:app",
             host="0.0.0.0",

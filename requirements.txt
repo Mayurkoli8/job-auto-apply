@@ -1,3 +1,4 @@
+# Core
 fastapi>=0.115.0,<0.116
 uvicorn[standard]>=0.30.0,<0.32
 python-multipart>=0.0.9

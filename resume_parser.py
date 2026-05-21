@@ -99,10 +99,38 @@ def parse_resume_with_gemini(raw_text: str) -> dict:
         )
     )
     content = response.text.strip()
+    
     # Strip any accidental markdown fences
     content = re.sub(r"^```(?:json)?", "", content).strip()
     content = re.sub(r"```$", "", content).strip()
-    return json.loads(content)
+    
+    # Try to extract JSON if wrapped in other text
+    json_match = re.search(r'\{.*\}', content, re.DOTALL)
+    if json_match:
+        content = json_match.group(0)
+    
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError as e:
+        print(f"[Resume Parser] JSON decode error: {e}")
+        print(f"[Resume Parser] Content length: {len(content)}, First 200 chars: {content[:200]}")
+        
+        # Fallback: return minimal valid structure
+        return {
+            "name": "Unknown",
+            "email": None,
+            "phone": None,
+            "location": None,
+            "summary": "Resume parsing encountered an error. Please upload a cleaner PDF.",
+            "total_experience_years": 0.0,
+            "skills": [],
+            "experience": [],
+            "education": [],
+            "certifications": [],
+            "languages": ["English"],
+            "notable_projects": [],
+            "keywords": []
+        }
 
 
 # ── Save to DB ───────────────────────────────────────────────────────────────

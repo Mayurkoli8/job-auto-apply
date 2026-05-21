@@ -222,92 +222,468 @@ async def ping():
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard():
-    """Serve the React dashboard (built separately or inline)."""
+    """Serve the modern React-like dashboard."""
     return """
 <!DOCTYPE html>
-<html><head>
-<title>Job Auto-Apply</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-  body { font-family: system-ui; background: #0f172a; color: #e2e8f0; margin: 0; padding: 20px; }
-  h1 { color: #38bdf8; }
-  .card { background: #1e293b; border-radius: 8px; padding: 16px; margin: 12px 0; }
-  .btn { background: #0ea5e9; color: white; border: none; padding: 8px 16px;
-         border-radius: 6px; cursor: pointer; margin: 4px; }
-  .btn:hover { background: #0284c7; }
-  .stat { display: inline-block; margin: 8px; text-align: center; }
-  .stat .num { font-size: 2em; font-weight: bold; color: #38bdf8; }
-  input[type=file] { color: #e2e8f0; }
-</style>
+<html lang="en">
+<head>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Job Auto-Apply — AI-Powered Job Bot</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+      color: #e2e8f0;
+      line-height: 1.6;
+    }
+    .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+    header {
+      background: rgba(15, 23, 42, 0.8);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid #334155;
+      padding: 20px 0;
+      sticky-top: 0;
+      z-index: 100;
+    }
+    header h1 { font-size: 28px; font-weight: 700; color: #38bdf8; margin-bottom: 4px; }
+    header p { font-size: 14px; color: #94a3b8; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin: 30px 0; }
+    .card {
+      background: rgba(30, 41, 59, 0.5);
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 24px;
+      transition: all 0.3s;
+    }
+    .card:hover { border-color: #64748b; background: rgba(30, 41, 59, 0.7); }
+    .stat-card { text-align: center; }
+    .stat-number { font-size: 40px; font-weight: 700; color: #38bdf8; margin: 12px 0; }
+    .stat-label { font-size: 14px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
+    .btn {
+      display: inline-block;
+      padding: 12px 24px;
+      background: #0ea5e9;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all 0.3s;
+      text-decoration: none;
+    }
+    .btn:hover { background: #0284c7; transform: translateY(-2px); box-shadow: 0 10px 20px rgba(14, 165, 233, 0.2); }
+    .btn:disabled { background: #64748b; cursor: not-allowed; transform: none; }
+    .btn-secondary { background: #475569; }
+    .btn-secondary:hover { background: #64748b; }
+    .btn-small { padding: 8px 16px; font-size: 12px; }
+    .btn-group { display: flex; gap: 12px; flex-wrap: wrap; }
+    .input-group {
+      display: flex;
+      gap: 12px;
+      margin: 16px 0;
+    }
+    input[type="file"], input[type="number"] {
+      flex: 1;
+      padding: 12px;
+      background: rgba(15, 23, 42, 0.5);
+      border: 1px solid #334155;
+      border-radius: 8px;
+      color: #e2e8f0;
+      font-size: 14px;
+    }
+    input[type="file"]::file-selector-button {
+      background: #475569;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-right: 12px;
+    }
+    .tabs {
+      display: flex;
+      gap: 12px;
+      border-bottom: 1px solid #334155;
+      margin-bottom: 20px;
+    }
+    .tab {
+      padding: 12px 20px;
+      background: transparent;
+      border: none;
+      color: #94a3b8;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      border-bottom: 2px solid transparent;
+      transition: all 0.3s;
+    }
+    .tab.active {
+      color: #38bdf8;
+      border-bottom-color: #38bdf8;
+    }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    .alert {
+      padding: 16px;
+      border-radius: 8px;
+      margin: 16px 0;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .alert-success { background: rgba(34, 197, 94, 0.1); border: 1px solid #22c55e; color: #86efac; }
+    .alert-error { background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; color: #fca5a5; }
+    .alert-info { background: rgba(59, 130, 246, 0.1); border: 1px solid #3b82f6; color: #93c5fd; }
+    .job-item {
+      background: rgba(30, 41, 59, 0.3);
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 12px;
+      transition: all 0.3s;
+    }
+    .job-item:hover { border-color: #64748b; background: rgba(30, 41, 59, 0.5); }
+    .job-title { font-size: 16px; font-weight: 600; color: #e2e8f0; margin-bottom: 4px; }
+    .job-company { font-size: 14px; color: #38bdf8; margin-bottom: 8px; }
+    .job-meta { font-size: 12px; color: #94a3b8; margin-bottom: 12px; }
+    .job-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .badge { display: inline-block; padding: 4px 12px; background: rgba(56, 189, 248, 0.2); color: #38bdf8; border-radius: 4px; font-size: 11px; font-weight: 600; }
+    .badge-success { background: rgba(34, 197, 94, 0.2); color: #86efac; }
+    .badge-pending { background: rgba(251, 146, 60, 0.2); color: #fed7aa; }
+    .profile-item { margin-bottom: 16px; }
+    .profile-label { font-size: 12px; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.5px; margin-bottom: 4px; }
+    .profile-value { font-size: 14px; color: #e2e8f0; word-break: break-word; }
+    .skill-list { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+    .skill-tag { background: rgba(56, 189, 248, 0.1); border: 1px solid #38bdf8; color: #38bdf8; padding: 4px 10px; border-radius: 4px; font-size: 12px; }
+    .spinner {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(56, 189, 248, 0.3);
+      border-top-color: #38bdf8;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
 </head>
 <body>
-<h1>⚡ Job Auto-Apply</h1>
-<div class="card" id="stats">Loading stats...</div>
-<div class="card">
-  <h3>Upload Resume</h3>
-  <input type="file" id="resumeFile" accept=".pdf,.docx">
-  <button class="btn" onclick="uploadResume()">Parse Resume</button>
-  <div id="resumeResult"></div>
-</div>
-<div class="card">
-  <h3>Run Now</h3>
-  <button class="btn" onclick="runNow(false)">▶ Full Run (Email + Forms)</button>
-  <button class="btn" onclick="runNow(true)">📧 Email Only</button>
-  <button class="btn" onclick="testEmail()">🔧 Test Email Config</button>
-  <div id="runResult"></div>
-</div>
-<div class="card">
-  <h3>Recent Applications</h3>
-  <div id="jobs">Loading...</div>
-</div>
-<script>
-async function loadStats() {
-  const r = await fetch('/api/stats'); const d = await r.json();
-  document.getElementById('stats').innerHTML = `
-    <div class="stat"><div class="num">${d.total_scraped||0}</div>Scraped</div>
-    <div class="stat"><div class="num">${d.total_applied||0}</div>Applied</div>
-    <div class="stat"><div class="num">${(d.by_status||{}).interview||0}</div>Interviews</div>
-    <div class="stat"><div class="num">${(d.by_status||{}).replied||0}</div>Replies</div>
-    <small>Next run: ${d.next_scheduled_run ? new Date(d.next_scheduled_run).toLocaleString() : 'not scheduled'}</small>`;
-}
-async function uploadResume() {
-  const f = document.getElementById('resumeFile').files[0];
-  if (!f) return alert('Select a file first');
-  const fd = new FormData(); fd.append('file', f);
-  const r = await fetch('/api/parse-resume', {method:'POST', body:fd});
-  const d = await r.json();
-  document.getElementById('resumeResult').innerHTML = d.success
-    ? `✅ Parsed: ${d.profile.name} | ${d.profile.skills?.length} skills`
-    : `❌ ${JSON.stringify(d)}`;
-}
-async function runNow(emailOnly) {
-  const r = await fetch('/api/run', {method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({email_only:emailOnly})});
-  const d = await r.json();
-  document.getElementById('runResult').innerHTML = `✅ ${d.message}`;
-  setTimeout(loadStats, 5000);
-}
-async function testEmail() {
-  const r = await fetch('/api/test-email', {method:'POST'});
-  const d = await r.json();
-  document.getElementById('runResult').innerHTML = d.success
-    ? '✅ Test email sent — check your inbox!'
-    : `❌ ${d.message}`;
-}
-async function loadJobs() {
-  const r = await fetch('/api/jobs?applied=true&limit=20');
-  const d = await r.json();
-  document.getElementById('jobs').innerHTML = d.jobs.length === 0 ? 'No applications yet' :
-    d.jobs.map(j => `<div style="border-bottom:1px solid #334155;padding:8px 0">
-      <strong>${j.title}</strong> @ ${j.company}
-      <span style="color:#94a3b8;font-size:0.85em"> · ${j.source} · ${j.apply_method||''} · ${j.status}</span>
-      ${j.url ? `<a href="${j.url}" target="_blank" style="color:#38bdf8;margin-left:8px">View</a>` : ''}
-    </div>`).join('');
-}
-loadStats(); loadJobs();
-</script>
-</body></html>"""
+  <header>
+    <div class="container">
+      <h1>⚡ Job Auto-Apply</h1>
+      <p>AI-powered automated job applications • Scrapes 7 job boards • Sends personalized emails • Fills ATS forms</p>
+    </div>
+  </header>
+
+  <div class="container">
+    <!-- Stats Row -->
+    <div class="grid">
+      <div class="card stat-card">
+        <div class="stat-label">Scraped Jobs</div>
+        <div class="stat-number" id="stat-scraped">0</div>
+      </div>
+      <div class="card stat-card">
+        <div class="stat-label">Applied</div>
+        <div class="stat-number" id="stat-applied">0</div>
+      </div>
+      <div class="card stat-card">
+        <div class="stat-label">Interviews</div>
+        <div class="stat-number" id="stat-interviews">0</div>
+      </div>
+      <div class="card stat-card">
+        <div class="stat-label">Next Run</div>
+        <div class="stat-number" id="stat-nextrun" style="font-size: 16px;">--:-- --</div>
+      </div>
+    </div>
+
+    <!-- Main Tabs -->
+    <div class="card">
+      <div class="tabs">
+        <button class="tab active" onclick="switchTab('dashboard')">Dashboard</button>
+        <button class="tab" onclick="switchTab('resume')">Resume</button>
+        <button class="tab" onclick="switchTab('jobs')">Jobs</button>
+        <button class="tab" onclick="switchTab('run')">Run Now</button>
+      </div>
+
+      <!-- Dashboard Tab -->
+      <div id="dashboard" class="tab-content active">
+        <h3 style="margin-bottom: 16px; color: #38bdf8;">Quick Actions</h3>
+        <div class="btn-group">
+          <button class="btn" onclick="manualRun(false)">▶ Full Run (Email + Forms)</button>
+          <button class="btn btn-secondary" onclick="manualRun(true)">📧 Email Only</button>
+          <button class="btn btn-secondary" onclick="testEmailConfig()">🔧 Test Email Config</button>
+        </div>
+        <div id="run-status"></div>
+        <hr style="margin: 24px 0; border: none; border-top: 1px solid #334155;">
+        <h3 style="margin-bottom: 16px; color: #38bdf8;">Recent Applications</h3>
+        <div id="recent-jobs">Loading...</div>
+      </div>
+
+      <!-- Resume Tab -->
+      <div id="resume" class="tab-content">
+        <h3 style="margin-bottom: 16px; color: #38bdf8;">📄 Resume Upload & Parsing</h3>
+        <div class="input-group">
+          <input type="file" id="resumeFile" accept=".pdf,.docx" placeholder="Choose PDF or DOCX">
+          <button class="btn" onclick="uploadResume()">Parse Resume</button>
+        </div>
+        <div id="resume-upload-result"></div>
+        <hr style="margin: 24px 0; border: none; border-top: 1px solid #334155;">
+        <h3 style="margin-bottom: 16px; color: #38bdf8;">Parsed Profile</h3>
+        <div id="profile-display">No resume uploaded yet</div>
+      </div>
+
+      <!-- Jobs Tab -->
+      <div id="jobs" class="tab-content">
+        <h3 style="margin-bottom: 16px; color: #38bdf8;">📊 Job Listings</h3>
+        <div class="btn-group" style="margin-bottom: 16px;">
+          <button class="btn btn-small" onclick="filterJobs('all')">All</button>
+          <button class="btn btn-small btn-secondary" onclick="filterJobs('applied')">Applied</button>
+          <button class="btn btn-small btn-secondary" onclick="filterJobs('pending')">Pending</button>
+        </div>
+        <div id="jobs-list">Loading jobs...</div>
+      </div>
+
+      <!-- Run Now Tab -->
+      <div id="run" class="tab-content">
+        <h3 style="margin-bottom: 16px; color: #38bdf8;">⚙️ Manual Trigger</h3>
+        <div style="margin-bottom: 16px;">
+          <label style="display: block; margin-bottom: 8px; font-size: 14px;">Job Limit (leave 0 for default: 50)</label>
+          <input type="number" id="jobLimit" value="50" min="0" max="200" style="width: 100%;"/>
+        </div>
+        <div class="btn-group">
+          <button class="btn" onclick="customRun(false)">▶ Run Full Pipeline</button>
+          <button class="btn btn-secondary" onclick="customRun(true)">📧 Email Only</button>
+        </div>
+        <div id="custom-run-result"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentFilter = 'all';
+
+    // Tab switching
+    function switchTab(tab) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      event.target.classList.add('active');
+      document.getElementById(tab).classList.add('active');
+      if (tab === 'jobs') loadJobs();
+      if (tab === 'resume') loadProfile();
+    }
+
+    // Load stats
+    async function loadStats() {
+      try {
+        const r = await fetch('/api/stats');
+        const d = await r.json();
+        document.getElementById('stat-scraped').textContent = d.total_scraped || 0;
+        document.getElementById('stat-applied').textContent = d.total_applied || 0;
+        document.getElementById('stat-interviews').textContent = (d.by_status?.interview || 0);
+        if (d.next_scheduled_run) {
+          const next = new Date(d.next_scheduled_run);
+          document.getElementById('stat-nextrun').textContent = next.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        }
+      } catch (e) { console.error('Stats error:', e); }
+    }
+
+    // Upload resume
+    async function uploadResume() {
+      const file = document.getElementById('resumeFile').files[0];
+      if (!file) { showAlert('Please select a file', 'error'); return; }
+      
+      const fd = new FormData();
+      fd.append('file', file);
+      const resultDiv = document.getElementById('resume-upload-result');
+      resultDiv.innerHTML = '<div class="alert alert-info"><span class="spinner"></span> Parsing resume...</div>';
+      
+      try {
+        const r = await fetch('/api/parse-resume', { method: 'POST', body: fd });
+        const d = await r.json();
+        if (d.success) {
+          resultDiv.innerHTML = '<div class="alert alert-success">✅ Resume parsed successfully!</div>';
+          loadProfile();
+          setTimeout(() => loadStats(), 1000);
+        } else {
+          resultDiv.innerHTML = '<div class="alert alert-error">❌ ' + (d.detail || JSON.stringify(d)) + '</div>';
+        }
+      } catch (e) {
+        resultDiv.innerHTML = '<div class="alert alert-error">❌ Error: ' + e.message + '</div>';
+      }
+    }
+
+    // Load profile
+    async function loadProfile() {
+      try {
+        const r = await fetch('/api/profile');
+        const d = await r.json();
+        if (!d.profile) {
+          document.getElementById('profile-display').innerHTML = '<div class="alert alert-info">No resume uploaded yet. Upload a PDF or DOCX file above.</div>';
+          return;
+        }
+        const p = d.profile;
+        let html = `
+          <div class="profile-item">
+            <div class="profile-label">Name</div>
+            <div class="profile-value">${p.name}</div>
+          </div>
+          <div class="profile-item">
+            <div class="profile-label">Email</div>
+            <div class="profile-value">${p.email || 'N/A'}</div>
+          </div>
+          <div class="profile-item">
+            <div class="profile-label">Phone</div>
+            <div class="profile-value">${p.phone || 'N/A'}</div>
+          </div>
+          <div class="profile-item">
+            <div class="profile-label">Location</div>
+            <div class="profile-value">${p.location || 'N/A'}</div>
+          </div>
+          <div class="profile-item">
+            <div class="profile-label">Experience</div>
+            <div class="profile-value">${p.total_experience_years || 0} years</div>
+          </div>
+          <div class="profile-item">
+            <div class="profile-label">Skills (${(p.skills || []).length})</div>
+            <div class="skill-list">
+              ${(p.skills || []).slice(0, 15).map(s => `<span class="skill-tag">${s}</span>`).join('')}
+              ${(p.skills || []).length > 15 ? `<span class="skill-tag">+${(p.skills || []).length - 15} more</span>` : ''}
+            </div>
+          </div>
+        `;
+        document.getElementById('profile-display').innerHTML = html;
+      } catch (e) {
+        document.getElementById('profile-display').innerHTML = '<div class="alert alert-error">Error loading profile</div>';
+      }
+    }
+
+    // Load jobs
+    async function loadJobs() {
+      try {
+        const applied = currentFilter === 'applied' ? true : currentFilter === 'pending' ? false : null;
+        const url = '/api/jobs?limit=100' + (applied !== null ? '&applied=' + applied : '');
+        const r = await fetch(url);
+        const d = await r.json();
+        if (!d.jobs || d.jobs.length === 0) {
+          document.getElementById('jobs-list').innerHTML = '<div class="alert alert-info">No jobs found. Run the job scraper to fetch listings.</div>';
+          return;
+        }
+        document.getElementById('jobs-list').innerHTML = d.jobs.map(j => `
+          <div class="job-item">
+            <div class="job-title">${j.title}</div>
+            <div class="job-company">${j.company}</div>
+            <div class="job-meta">
+              <span class="badge">${j.source}</span>
+              <span class="badge">${j.apply_method || 'email'}</span>
+              <span class="badge ${j.applied ? 'badge-success' : 'badge-pending'}">${j.status || 'pending'}</span>
+            </div>
+            <div class="job-actions">
+              ${j.url ? `<a href="${j.url}" target="_blank" class="btn btn-small">View Job</a>` : ''}
+              ${j.contact_email ? `<a href="mailto:${j.contact_email}" class="btn btn-small btn-secondary">Email</a>` : ''}
+            </div>
+          </div>
+        `).join('');
+      } catch (e) {
+        document.getElementById('jobs-list').innerHTML = '<div class="alert alert-error">Error loading jobs</div>';
+      }
+    }
+
+    // Load recent jobs for dashboard
+    async function loadRecentJobs() {
+      try {
+        const r = await fetch('/api/jobs?applied=true&limit=5');
+        const d = await r.json();
+        if (!d.jobs || d.jobs.length === 0) {
+          document.getElementById('recent-jobs').innerHTML = '<div class="alert alert-info">No applications yet. Run a job application cycle to get started.</div>';
+          return;
+        }
+        document.getElementById('recent-jobs').innerHTML = d.jobs.map(j => `
+          <div class="job-item">
+            <div class="job-title">${j.title}</div>
+            <div class="job-company">${j.company}</div>
+            <div class="job-meta"><span class="badge">${j.source}</span> <span class="badge">${j.status || 'pending'}</span></div>
+          </div>
+        `).join('');
+      } catch (e) {
+        console.error('Error loading recent jobs:', e);
+      }
+    }
+
+    // Filter jobs
+    function filterJobs(filter) {
+      currentFilter = filter;
+      loadJobs();
+    }
+
+    // Manual run
+    async function manualRun(emailOnly) {
+      const r = await fetch('/api/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email_only: emailOnly, limit: 50 })
+      });
+      const d = await r.json();
+      document.getElementById('run-status').innerHTML = '<div class="alert alert-success">✅ ' + d.message + '</div>';
+      setTimeout(() => loadStats(), 3000);
+      setTimeout(() => loadRecentJobs(), 5000);
+    }
+
+    // Custom run
+    async function customRun(emailOnly) {
+      const limit = parseInt(document.getElementById('jobLimit').value) || 50;
+      const r = await fetch('/api/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email_only: emailOnly, limit })
+      });
+      const d = await r.json();
+      document.getElementById('custom-run-result').innerHTML = '<div class="alert alert-success">✅ ' + d.message + ' (Limit: ' + limit + ')</div>';
+    }
+
+    // Test email
+    async function testEmailConfig() {
+      const btn = event.target;
+      btn.disabled = true;
+      const originalText = btn.textContent;
+      btn.innerHTML = '<span class="spinner" style="display: inline-block;"></span> Testing...';
+      
+      try {
+        const r = await fetch('/api/test-email', { method: 'POST' });
+        const d = await r.json();
+        if (d.success) {
+          showAlert('✅ Test email sent! Check your inbox in 30 seconds.', 'success');
+        } else {
+          showAlert('❌ ' + d.message, 'error');
+        }
+      } catch (e) {
+        showAlert('❌ Error: ' + e.message, 'error');
+      }
+      
+      btn.disabled = false;
+      btn.textContent = originalText;
+    }
+
+    // Show alert
+    function showAlert(msg, type) {
+      const div = document.createElement('div');
+      div.className = 'alert alert-' + type;
+      div.textContent = msg;
+      document.body.insertBefore(div, document.body.firstChild);
+      setTimeout(() => div.remove(), 5000);
+    }
+
+    // Init
+    loadStats();
+    loadRecentJobs();
+    setInterval(loadStats, 30000);
+    setInterval(loadRecentJobs, 60000);
+  </script>
+</body>
+</html>"""
 
 
 # ── CLI entry ─────────────────────────────────────────────────────────────────

@@ -294,13 +294,17 @@ async def scrape_indeed(client: httpx.AsyncClient, keywords: List[str]) -> List[
                 title_text = t.get_text(strip=True) if t else ""
                 if not title_text:
                     continue
+                description = s.get_text(strip=True) if s else ""
+                text = f"{title_text} {description} {c.get_text(strip=True) if c else ''} {l.get_text(strip=True) if l else ''}".lower()
+                if not any(kw.lower() in text for kw in keywords):
+                    continue
                 jobs.append({
                     "id": make_job_id("indeed", jk),
                     "title": title_text,
                     "company": c.get_text(strip=True) if c else "",
                     "location": l.get_text(strip=True) if l else "",
                     "url": f"https://www.indeed.com/viewjob?jk={jk}",
-                    "description": s.get_text(strip=True) if s else "",
+                    "description": description,
                     "salary": "",
                     "source": "indeed",
                     "posted_at": None,
@@ -365,6 +369,9 @@ async def scrape_linkedin(keywords: List[str]) -> List[dict]:
                         loc_text = await loc_el.inner_text() if loc_el else ""
                         link = await link_el.get_attribute("href") if link_el else ""
                         if not title_text or not link:
+                            continue
+                        text = f"{title_text} {company_text} {loc_text}".lower()
+                        if not any(kw.lower() in text for kw in keywords):
                             continue
                         uid = hashlib.md5(link.encode()).hexdigest()[:12]
                         jobs.append({
@@ -441,7 +448,13 @@ async def scrape_all_jobs(profile: dict = None) -> List[dict]:
     for job in all_jobs:
         job["match_score"] = score_job(job, profile)
 
-    all_jobs = deduplicate(all_jobs)
+    # Filter by relevance threshold
+    filtered_jobs = [j for j in all_jobs if j["match_score"] >= settings.MIN_MATCH_SCORE]
+    dropped = len(all_jobs) - len(filtered_jobs)
+    if dropped:
+        print(f"[Scraper] Dropped {dropped} low-relevance jobs below match score {settings.MIN_MATCH_SCORE}")
+
+    all_jobs = deduplicate(filtered_jobs)
     all_jobs.sort(key=lambda j: j["match_score"], reverse=True)
 
     # Filter already-seen jobs

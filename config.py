@@ -64,6 +64,7 @@ class Settings(BaseSettings):
     ADZUNA_APP_KEY: Optional[str] = None
     THE_MUSE_API_KEY: Optional[str] = None
     TWOCAPTCHA_API_KEY: Optional[str] = None
+    MIN_MATCH_SCORE: float = 0.2
 
     @field_validator("JOB_TITLES", "JOB_KEYWORDS", "EXCLUDED_COMPANIES", mode="before")
     @classmethod
@@ -73,6 +74,13 @@ class Settings(BaseSettings):
                 return json.loads(v)
             except json.JSONDecodeError:
                 return [x.strip() for x in v.split(",") if x.strip()]
+        return v
+
+    @field_validator("GMAIL_ADDRESS", "GMAIL_APP_PASSWORD", "RESUME_URL", "JOB_LOCATION", "USER_LINKEDIN", "USER_GITHUB", "USER_PORTFOLIO", mode="before")
+    @classmethod
+    def strip_quotes(cls, v):
+        if isinstance(v, str):
+            return v.strip().strip('"').strip("'")
         return v
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}

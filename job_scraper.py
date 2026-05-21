@@ -31,7 +31,7 @@ HEADERS = {
     "User-Agent": ua.random,
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
-    "Accept-Encoding": "gzip, deflate, br",
+
     "Connection": "keep-alive",
 }
 
@@ -99,6 +99,7 @@ async def scrape_remotive(client: httpx.AsyncClient, keywords: List[str]) -> Lis
         for title in settings.JOB_TITLES[:3]:
             resp = await client.get(
                 f"https://remotive.com/api/remote-jobs",
+                headers={**HEADERS, "Accept": "application/json"},
                 params={"search": title, "limit": 50},
                 timeout=20
             )
@@ -188,6 +189,7 @@ async def scrape_the_muse(client: httpx.AsyncClient, keywords: List[str]) -> Lis
             "api_key": settings.THE_MUSE_API_KEY or "",
         }
         resp = await client.get("https://www.themuse.com/api/public/jobs",
+                                headers={**HEADERS, "Accept": "application/json"},
                                 params=params, timeout=20)
         data = resp.json()
         for item in data.get("results", []):
@@ -442,7 +444,7 @@ async def scrape_all_jobs(profile: dict = None) -> List[dict]:
         if isinstance(r, list):
             all_jobs.extend(r)
         elif isinstance(r, Exception):
-            print(f"[Scraper] Source error: {r}")
+            print(f"[Scraper] Source error: {r!r}")
 
     # Score and deduplicate
     for job in all_jobs:

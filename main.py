@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Optional
 import json
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -126,12 +126,10 @@ async def get_profile():
 
 
 @app.post("/api/run")
-async def trigger_run(request: RunRequest, background_tasks: BackgroundTasks):
+async def trigger_run(request: RunRequest):
     """Trigger a manual application run."""
-    if request.email_only:
-        background_tasks.add_task(run_email_only_pipeline, request.limit)
-    else:
-        background_tasks.add_task(run_daily_pipeline, request.limit)
+    task = run_email_only_pipeline(request.limit) if request.email_only else run_daily_pipeline(request.limit)
+    asyncio.create_task(task)
     return {
         "message": "Application run started in background",
         "limit": request.limit or settings.DAILY_LIMIT,

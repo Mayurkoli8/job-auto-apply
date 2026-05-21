@@ -403,10 +403,10 @@ async def dashboard():
     <!-- Main Tabs -->
     <div class="card">
       <div class="tabs">
-        <button class="tab active" onclick="switchTab('dashboard')">Dashboard</button>
-        <button class="tab" onclick="switchTab('resume')">Resume</button>
-        <button class="tab" onclick="switchTab('jobs')">Jobs</button>
-        <button class="tab" onclick="switchTab('run')">Run Now</button>
+        <button class="tab active" onclick="switchTab(this, 'dashboard')">Dashboard</button>
+        <button class="tab" onclick="switchTab(this, 'resume')">Resume</button>
+        <button class="tab" onclick="switchTab(this, 'jobs')">Jobs</button>
+        <button class="tab" onclick="switchTab(this, 'run')">Run Now</button>
       </div>
 
       <!-- Dashboard Tab -->
@@ -415,7 +415,7 @@ async def dashboard():
         <div class="btn-group">
           <button class="btn" onclick="manualRun(false)">▶ Full Run (Email + Forms)</button>
           <button class="btn btn-secondary" onclick="manualRun(true)">📧 Email Only</button>
-          <button class="btn btn-secondary" onclick="testEmailConfig()">🔧 Test Email Config</button>
+          <button class="btn btn-secondary" onclick="testEmailConfig(this)">🔧 Test Email Config</button>
         </div>
         <div id="run-status"></div>
         <hr style="margin: 24px 0; border: none; border-top: 1px solid #334155;">
@@ -467,10 +467,10 @@ async def dashboard():
     let currentFilter = 'all';
 
     // Tab switching
-    function switchTab(tab) {
+    function switchTab(button, tab) {
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
       document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-      event.target.classList.add('active');
+      button.classList.add('active');
       document.getElementById(tab).classList.add('active');
       if (tab === 'jobs') loadJobs();
       if (tab === 'resume') loadProfile();
@@ -645,8 +645,8 @@ async def dashboard():
     }
 
     // Test email
-    async function testEmailConfig() {
-      const btn = event.target;
+    async function testEmailConfig(btn) {
+      if (!btn) return;
       btn.disabled = true;
       const originalText = btn.textContent;
       btn.innerHTML = '<span class="spinner" style="display: inline-block;"></span> Testing...';

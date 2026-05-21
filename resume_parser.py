@@ -89,48 +89,201 @@ Resume text:
 """
 
 
+def build_fallback_profile(raw_text: str) -> dict:
+    text = raw_text.replace('\r', '\n')
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+
+    def section_key(line: str) -> str | None:
+        lower = line.lower()
+        if 'professional summary' in lower or lower == 'summary' or 'about me' in lower:
+            return 'summary'
+        if 'academic qualifications' in lower or lower == 'education':
+            return 'education'
+        if lower in {'skills', 'technical skills', 'technologies'} or lower.startswith('skills:') or lower.startswith('technical skills:') or lower.startswith('technologies:'):
+            return 'skills'
+        if lower == 'experience' or lower.startswith('experience ') or lower.startswith('experience:') or lower.endswith(' experience') or lower.endswith(' experience:'):
+            return 'experience'
+        if 'project' in lower and len(lower) < 40:
+            return 'projects'
+        if lower in {'certifications', 'certification', 'training'} or lower.startswith('certifications:') or lower.startswith('certification:') or lower.startswith('training:'):
+            return 'certifications'
+        if 'achievement' in lower and len(lower) < 40:
+            return 'achievements'
+        if lower in {'languages', 'language'} or lower.startswith('languages:') or lower.startswith('language:'):
+            return 'languages'
+        return None
+
+    sections: dict[str, list[str]] = {'header': []}
+    current_section = 'header'
+    for line in lines:
+        key = section_key(line)
+        if key:
+            current_section = key
+            sections.setdefault(current_section, [])
+            continue
+        sections.setdefault(current_section, []).append(line)
+
+    email_match = re.search(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", raw_text)
+    phone_match = re.search(r"(\+?\d[\d\s\-\(\)]{7,}\d)", raw_text)
+
+    contact_line = next((line for line in sections['header'] if '@' in line or 'location' in line.lower()), '')
+    location = None
+    if 'location:' in contact_line.lower():
+        location = re.search(r'location:\s*([^|]+)', contact_line, re.IGNORECASE)
+        location = location.group(1).strip() if location else None
+    elif '|' in contact_line:
+        parts = [part.strip() for part in contact_line.split('|')]
+        loc_parts = [part for part in parts if 'location' in part.lower()]
+        if loc_parts:
+            location = re.search(r'location:\s*(.+)', loc_parts[0], re.IGNORECASE)
+            location = location.group(1).strip() if location else loc_parts[0]
+        else:
+            for part in parts:
+                if re.match(r'[A-Za-z].+', part) and 'github' not in part.lower() and 'linkedin' not in part.lower() and '@' not in part:
+                    location = part
+                    break
+
+    def parse_skills(skill_lines: list[str]) -> list[str]:
+        skills = []
+        for line in skill_lines:
+            line = line.replace('•', '').replace('�', '').strip()
+            if ':' in line:
+                _, values = line.split(':', 1)
+            else:
+                values = line
+            parts = re.split(r'[|,;\n]', values)
+            for part in parts:
+                cleaned = part.strip()
+                if cleaned and len(cleaned) > 1:
+                    skills.append(cleaned)
+        return skills
+
+    skills = parse_skills(sections.get('skills', []))
+    if not skills:
+        skills = parse_skills([line for line in sections.get('header', []) if 'python' in line.lower() or 'fastapi' in line.lower()])
+    skills = list(dict.fromkeys(skills))[:30]
+
+    def parse_summary(summary_lines: list[str]) -> str:
+        if summary_lines:
+            return ' '.join(summary_lines[:3]).strip()
+        return 'Resume parsed without AI. Please verify the extracted data.'
+
+    def parse_education(education_lines: list[str]) -> list[dict]:
+        edu = []
+        for line in education_lines:
+            if line and any(token.isdigit() for token in line):
+                edu.append({
+                    'school': line,
+                    'degree': '',
+                    'field': '',
+                    'year': ''
+                })
+        return edu
+
+    def parse_experience(experience_lines: list[str]) -> list[dict]:
+        experience = []
+        current = None
+
+        def clean_bullet(line: str) -> str:
+            return line.lstrip("-•▪•	\n\r ").strip()
+
+        for line in experience_lines:
+            if line.startswith(("-", "•", "▪", "•")):
+                bullet = clean_bullet(line)
+                if current is not None and bullet:
+                    current["bullets"].append(bullet)
+                continue
+            if "|" in line:
+                parts = [part.strip() for part in line.split("|")]
+                title = parts[0]
+                company = parts[1] if len(parts) >= 2 else ""
+                duration = ""
+                if len(parts) >= 3:
+                    duration = parts[2]
+                else:
+                    date_match = re.search(r"((Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|Present|\d{4}).*)$", company)
+                    if date_match:
+                        duration = date_match.group(1).strip()
+                        company = company[:date_match.start()].strip()
+                current = {
+                    "company": company,
+                    "title": title,
+                    "duration": duration,
+                    "years": 0.0,
+                    "bullets": []
+                }
+                experience.append(current)
+            elif line and current is None:
+                current = {
+                    "company": "",
+                    "title": line,
+                    "duration": "",
+                    "years": 0.0,
+                    "bullets": []
+                }
+                experience.append(current)
+            elif line and current is not None:
+                current["bullets"].append(clean_bullet(line))
+        return experience
+    name = sections['header'][0] if sections['header'] else 'Unknown'
+    summary = parse_summary(sections.get('summary', []))
+    education = parse_education(sections.get('education', []))
+    experience = parse_experience(sections.get('experience', []))
+
+    if not education and sections.get('header'):
+        education = parse_education(sections['header'])
+
+    return {
+        'name': name,
+        'email': email_match.group(0) if email_match else None,
+        'phone': phone_match.group(0).strip() if phone_match else None,
+        'location': location,
+        'summary': summary,
+        'total_experience_years': 0.0,
+        'skills': skills,
+        'experience': experience,
+        'education': education,
+        'certifications': sections.get('certifications', []),
+        'languages': sections.get('languages', ['English']),
+        'notable_projects': [],
+        'keywords': skills[:10] if skills else [],
+    }
+
+
 def parse_resume_with_gemini(raw_text: str) -> dict:
-    model = _configure_gemini()
-    response = model.generate_content(
-        EXTRACTION_PROMPT + raw_text,
-        generation_config=genai.GenerationConfig(
-            temperature=0.1,
-            max_output_tokens=2000,
+    if not settings.GEMINI_API_KEY:
+        print("[Resume Parser] No GEMINI_API_KEY configured — using fallback parser")
+        return build_fallback_profile(raw_text)
+
+    try:
+        model = _configure_gemini()
+        response = model.generate_content(
+            EXTRACTION_PROMPT + raw_text,
+            generation_config=genai.GenerationConfig(
+                temperature=0.1,
+                max_output_tokens=2000,
+            )
         )
-    )
-    content = response.text.strip()
-    
+        content = response.text.strip()
+    except Exception as e:
+        print(f"[Resume Parser] Gemini API failure: {e}")
+        return build_fallback_profile(raw_text)
+
     # Strip any accidental markdown fences
     content = re.sub(r"^```(?:json)?", "", content).strip()
     content = re.sub(r"```$", "", content).strip()
-    
+
     # Try to extract JSON if wrapped in other text
     json_match = re.search(r'\{.*\}', content, re.DOTALL)
     if json_match:
         content = json_match.group(0)
-    
+
     try:
         return json.loads(content)
     except json.JSONDecodeError as e:
         print(f"[Resume Parser] JSON decode error: {e}")
         print(f"[Resume Parser] Content length: {len(content)}, First 200 chars: {content[:200]}")
-        
-        # Fallback: return minimal valid structure
-        return {
-            "name": "Unknown",
-            "email": None,
-            "phone": None,
-            "location": None,
-            "summary": "Resume parsing encountered an error. Please upload a cleaner PDF.",
-            "total_experience_years": 0.0,
-            "skills": [],
-            "experience": [],
-            "education": [],
-            "certifications": [],
-            "languages": ["English"],
-            "notable_projects": [],
-            "keywords": []
-        }
+        return build_fallback_profile(raw_text)
 
 
 # ── Save to DB ───────────────────────────────────────────────────────────────

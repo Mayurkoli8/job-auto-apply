@@ -36,7 +36,7 @@ Set these manually if needed:
 
 | Field | Value |
 |-------|-------|
-| Build Command | `pip install -r requirements.txt && playwright install chromium && playwright install-deps chromium` |
+| Build Command | `pip install -r requirements.txt && playwright install --with-deps chromium` |
 | Start Command | `python main.py` |
 | Plan | **Free** |
 

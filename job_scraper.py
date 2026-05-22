@@ -399,7 +399,7 @@ async def scrape_linkedin(keywords: List[str]) -> List[dict]:
 
 # ── Deduplicate & filter ─────────────────────────────────────────────────────
 
-def deduplicate(jobs: List[dict]) -> List[dict]:
+def deduplicate(jobs: List[dict], drop_counters: dict | None = None) -> List[dict]:
     seen_ids = set()
     seen_titles = {}  # (company_lower, title_lower) -> True
     result = []
@@ -407,10 +407,16 @@ def deduplicate(jobs: List[dict]) -> List[dict]:
         jid = job["id"]
         key = (job["company"].lower().strip(), job["title"].lower().strip())
         if jid in seen_ids or key in seen_titles:
+            if drop_counters is not None:
+                drop_counters.setdefault('duplicate', 0)
+                drop_counters['duplicate'] += 1
             continue
         # Skip excluded companies
         if any(ex.lower() in job["company"].lower()
                for ex in settings.EXCLUDED_COMPANIES):
+            if drop_counters is not None:
+                drop_counters.setdefault('excluded_company', 0)
+                drop_counters['excluded_company'] += 1
             continue
         seen_ids.add(jid)
         seen_titles[key] = True
@@ -446,29 +452,45 @@ async def scrape_all_jobs(profile: dict = None) -> List[dict]:
         elif isinstance(r, Exception):
             print(f"[Scraper] Source error: {r!r}")
 
-    # Score and deduplicate
+    # Score
     for job in all_jobs:
         job["match_score"] = score_job(job, profile)
 
     # Filter by relevance threshold
+    low_score_jobs = [j for j in all_jobs if j["match_score"] < settings.MIN_MATCH_SCORE]
     filtered_jobs = [j for j in all_jobs if j["match_score"] >= settings.MIN_MATCH_SCORE]
-    dropped = len(all_jobs) - len(filtered_jobs)
-    if dropped:
-        print(f"[Scraper] Dropped {dropped} low-relevance jobs below match score {settings.MIN_MATCH_SCORE}")
+    drop_counters = {
+        'low_score': len(low_score_jobs),
+        'duplicate': 0,
+        'excluded_company': 0,
+    }
+    if drop_counters['low_score']:
+        print(f"[Scraper] Dropped {drop_counters['low_score']} low-relevance jobs below match score {settings.MIN_MATCH_SCORE}")
 
-    all_jobs = deduplicate(filtered_jobs)
-    all_jobs.sort(key=lambda j: j["match_score"], reverse=True)
+    # Deduplicate and count reasons
+    deduped = deduplicate(filtered_jobs, drop_counters=drop_counters)
+    deduped.sort(key=lambda j: j["match_score"], reverse=True)
 
     # Filter already-seen jobs
     known_ids = await get_all_job_ids()
-    new_jobs = [j for j in all_jobs if j["id"] not in known_ids]
+    already_seen = sum(1 for j in deduped if j["id"] in known_ids)
+    new_jobs = [j for j in deduped if j["id"] not in known_ids]
 
-    # Save to DB
+    # Save to DB (count saved entries)
     saved = 0
-    for job in all_jobs:
+    for job in deduped:
         if await upsert_job(job):
             saved += 1
 
-    print(f"[Scraper] Total: {len(all_jobs)} | New: {saved} | "
-          f"Best match: {all_jobs[0]['title'] if all_jobs else 'n/a'}")
+    # Print a concise breakdown
+    total_after_filter = len(deduped)
+    print(
+        f"[Scraper] Total after filter: {total_after_filter} | New discovered: {len(new_jobs)} | "
+        f"Saved: {saved} | Already seen: {already_seen} | "
+        f"Dropped low_score: {drop_counters.get('low_score',0)} | "
+        f"Duplicates: {drop_counters.get('duplicate',0)} | "
+        f"Excluded companies: {drop_counters.get('excluded_company',0)} | "
+        f"Best match: {deduped[0]['title'] if deduped else 'n/a'}"
+    )
+
     return new_jobs

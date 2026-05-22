@@ -278,12 +278,36 @@ def parse_resume_with_gemini(raw_text: str) -> dict:
     if json_match:
         content = json_match.group(0)
 
-    try:
-        return json.loads(content)
-    except json.JSONDecodeError as e:
-        print(f"[Resume Parser] JSON decode error: {e}")
-        print(f"[Resume Parser] Content length: {len(content)}, First 200 chars: {content[:200]}")
-        return build_fallback_profile(raw_text)
+    # Attempt progressive sanitization of Gemini output to handle
+    # common model formatting issues (trailing commas, control chars,
+    # and single-quote strings) before falling back.
+    def _sanitize_candidate(cand: str) -> str:
+        # Remove low-control characters that break JSON parsing
+        cand = re.sub(r'[\x00-\x08\x0b-\x0c\x0e-\x1f]', ' ', cand)
+        # Remove trailing commas before closing braces/brackets
+        cand = re.sub(r',\s*([}\]])', r"\1", cand)
+        # Heuristic: if single quotes are much more common than double
+        # quotes, try converting single->double quotes (models sometimes
+        # emit python-style dicts)
+        if cand.count("'") > cand.count('"'):
+            cand = cand.replace("'", '"')
+        return cand
+
+    # Try raw parse first, then apply sanitizers progressively
+    for attempt, candidate in enumerate([content, _sanitize_candidate(content)], start=1):
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError as e:
+            # provide concise debug info for each attempt
+            print(f"[Resume Parser] JSON decode attempt {attempt} failed: {e}")
+            if attempt == 1:
+                # show a short snippet only on first failure
+                print(f"[Resume Parser] Snippet: {candidate[:200]}")
+            continue
+
+    # Last resort: give up and use fallback parser
+    print("[Resume Parser] All JSON parsing attempts failed; using fallback parser")
+    return build_fallback_profile(raw_text)
 
 
 # ── Save to DB ───────────────────────────────────────────────────────────────

@@ -86,7 +86,8 @@ def send_email_sync(
     except smtplib.SMTPRecipientsRefused:
         return False, f"Recipient refused: {to_address}"
     except Exception as e:
-        return False, str(e)
+        # Return repr for clearer console logs and debugging
+        return False, repr(e)
 
 
 async def send_email(
@@ -121,9 +122,13 @@ async def send_email(
         await session.commit()
 
     if success:
-        print(f"[Email] ✓ Sent to {to_address} | Subject: {subject[:60]}")
+        print(f"[Email] ✓ Sent to {to_address} | Subject: {subject[:60]} | Job: {job_id or 'n/a'}")
     else:
-        print(f"[Email] ✗ Failed to {to_address}: {error}")
+        # Helpful troubleshooting hints
+        hint = ""
+        if error and 'auth' in error.lower():
+            hint = " — check GMAIL_ADDRESS and GMAIL_APP_PASSWORD (no surrounding quotes)"
+        print(f"[Email] ✗ Failed to {to_address} | Job: {job_id or 'n/a'}: {error}{hint}")
 
     return success
 

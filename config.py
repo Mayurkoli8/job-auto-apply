@@ -16,9 +16,13 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-1.5-flash"
 
-    # ── Email (Gmail SMTP) ───────────────────────────
+    # ── Email (Gmail SMTP or SendGrid) ──────────────
+    # Gmail SMTP: requires GMAIL_ADDRESS + GMAIL_APP_PASSWORD
+    # SendGrid: requires SENDGRID_API_KEY (recommended for Render)
+    # Priority: SendGrid if configured → Gmail if configured → error
     GMAIL_ADDRESS: str = ""
     GMAIL_APP_PASSWORD: str = ""
+    SENDGRID_API_KEY: str = ""
 
     # ── User profile ────────────────────────────────
     USER_FULL_NAME: str = "Your Name"

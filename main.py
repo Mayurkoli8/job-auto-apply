@@ -211,6 +211,13 @@ async def send_test_email():
     return {"success": success, "message": "Check your inbox!" if success else "Email failed — check config"}
 
 
+@app.get("/api/stats-detailed")
+async def detailed_stats():
+    """Detailed stats including timeline and distribution (for visualization)."""
+    from visualizer import export_stats_json
+    return await export_stats_json()
+
+
 @app.get("/api/health")
 async def health():
     return {

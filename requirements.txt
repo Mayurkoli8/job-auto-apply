@@ -26,6 +26,7 @@ playwright>=1.47.0
 
 # Email
 secure-smtplib>=0.1.1
+sendgrid>=7.0.0
 
 # AI — Google Gemini (free tier)
 google-generativeai>=0.8.0

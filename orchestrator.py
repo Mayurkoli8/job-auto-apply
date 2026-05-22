@@ -17,7 +17,7 @@ from typing import List
 
 from config import settings
 from database import (
-    mark_applied, get_stats, AsyncSessionLocal, DailyStats
+    mark_applied, get_stats, AsyncSessionLocal, DailyStats, Job, get_pending_jobs
 )
 from resume_parser import load_profile, parse_and_save_resume
 from job_scraper import scrape_all_jobs
@@ -138,9 +138,14 @@ async def run_daily_pipeline(limit: int = None) -> dict:
     new_jobs = await scrape_all_jobs(profile)
     console.print(f"[cyan]{len(new_jobs)} new jobs found[/cyan]")
 
-    if not new_jobs:
-        console.print("[yellow]No new jobs to apply to.[/yellow]")
-        return {"applied": 0, "scraped": 0}
+    # Also retry pending jobs that were scraped in earlier runs
+    pending_jobs = await get_pending_jobs(limit)
+    if pending_jobs:
+        console.print(f"[cyan]{len(pending_jobs)} pending jobs available for retry[/cyan]")
+
+    if not new_jobs and not pending_jobs:
+        console.print("[yellow]No jobs available to apply to.[/yellow]")
+        return {"applied": 0, "scraped": len(new_jobs)}
 
     # 3. Apply
     applied_email = 0
@@ -148,8 +153,25 @@ async def run_daily_pipeline(limit: int = None) -> dict:
     skipped = 0
     errors = 0
 
-    # Prioritise by match score
-    jobs_to_apply = new_jobs[:limit]
+    # Prioritise by match score; avoid duplicate work for the same job
+    seen_ids = {job["id"] for job in new_jobs}
+    all_candidates = list(new_jobs)
+    for job in pending_jobs:
+        if job.id not in seen_ids:
+            all_candidates.append({
+                "id": job.id,
+                "title": job.title,
+                "company": job.company,
+                "location": job.location,
+                "url": job.url,
+                "description": job.description,
+                "salary": job.salary,
+                "source": job.source,
+                "posted_at": job.posted_at,
+                "match_score": job.match_score or 0.0,
+            })
+    all_candidates.sort(key=lambda j: j["match_score"], reverse=True)
+    jobs_to_apply = all_candidates[:limit]
 
     with Progress(
         SpinnerColumn(),

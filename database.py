@@ -148,6 +148,18 @@ async def upsert_job(job_data: dict) -> bool:
         return True
 
 
+async def get_pending_jobs(limit: int = 50) -> list[Job]:
+    from sqlalchemy import select
+    async with AsyncSessionLocal() as s:
+        result = await s.execute(
+            select(Job)
+            .where(Job.applied == False)
+            .order_by(Job.match_score.desc())
+            .limit(limit)
+        )
+        return result.scalars().all()
+
+
 async def mark_applied(job_id: str, method: str, contact_email: str = None,
                        email_subject: str = None, email_body: str = None):
     async with AsyncSessionLocal() as s:

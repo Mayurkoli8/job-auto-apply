@@ -44,7 +44,7 @@ async def process_job_email(job: dict, profile: dict) -> bool:
     )
 
     if not contact or not contact.email:
-        console.print(f"  [yellow]No email found for {job['company']}[/yellow]")
+        console.print(f"  [yellow]No email found for {job['company']} — contact={contact}[/yellow]")
         return False
 
     # Generate personalized email
@@ -173,6 +173,10 @@ async def run_daily_pipeline(limit: int = None) -> dict:
     all_candidates.sort(key=lambda j: j["match_score"], reverse=True)
     jobs_to_apply = all_candidates[:limit]
 
+    console.print(f"[Orchestrator] Applying to {len(jobs_to_apply)} jobs (new: {len(new_jobs)}, pending retry: {len(pending_jobs)})")
+    for i, job in enumerate(jobs_to_apply, start=1):
+        console.print(f"[Orchestrator] Job #{i}: {job['company']} — {job['title']} (score={job['match_score']:.3f})")
+
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -198,6 +202,7 @@ async def run_daily_pipeline(limit: int = None) -> dict:
                 # PRIMARY: cold email
                 email_success = await process_job_email(job, profile)
                 if email_success:
+                    console.print(f"  [green]Email sent for {job['company']}[/green]")
                     applied_email += 1
                     progress.advance(task)
                     await asyncio.sleep(delay)
@@ -273,8 +278,26 @@ async def run_email_only_pipeline(limit: int = None) -> dict:
     if not profile:
         return {}
     new_jobs = await scrape_all_jobs(profile)
+    pending_jobs = await get_pending_jobs(limit)
+    all_jobs = list(new_jobs)
+    seen_ids = {job['id'] for job in new_jobs}
+    for job in pending_jobs:
+        if job.id not in seen_ids:
+            all_jobs.append({
+                'id': job.id,
+                'title': job.title,
+                'company': job.company,
+                'location': job.location,
+                'url': job.url,
+                'description': job.description,
+                'salary': job.salary,
+                'source': job.source,
+                'posted_at': job.posted_at,
+                'match_score': job.match_score or 0.0,
+            })
+    all_jobs.sort(key=lambda j: j['match_score'], reverse=True)
     applied = 0
-    for job in new_jobs[:limit]:
+    for job in all_jobs[:limit]:
         success = await process_job_email(job, profile)
         if success:
             applied += 1

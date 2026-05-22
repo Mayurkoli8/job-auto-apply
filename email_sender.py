@@ -77,14 +77,14 @@ def send_email_sync(
     try:
         msg = _build_message(to_address, subject, body, attach_resume=attach_resume)
         context = ssl.create_default_context()
-        with smtplib.SMTP_SSL(GMAIL_SMTP_HOST, GMAIL_SMTP_PORT, context=context) as server:
+        with smtplib.SMTP_SSL(GMAIL_SMTP_HOST, GMAIL_SMTP_PORT, context=context, timeout=15) as server:
             server.login(settings.GMAIL_ADDRESS, settings.GMAIL_APP_PASSWORD)
             server.send_message(msg)
         return True, ""
-    except smtplib.SMTPAuthenticationError:
-        return False, "Gmail auth failed — check App Password"
-    except smtplib.SMTPRecipientsRefused:
-        return False, f"Recipient refused: {to_address}"
+    except smtplib.SMTPAuthenticationError as e:
+        return False, f"Gmail auth failed — check App Password: {e}"
+    except smtplib.SMTPRecipientsRefused as e:
+        return False, f"Recipient refused: {to_address}: {e}"
     except Exception as e:
         # Return repr for clearer console logs and debugging
         return False, repr(e)

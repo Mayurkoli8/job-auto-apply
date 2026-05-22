@@ -255,6 +255,7 @@ async def find_contact_for_job(
     ) as client:
 
         domain = company_to_domain(company, job_url)
+        print(f"[EmailFinder] company={company}, job_url={job_url}, domain={domain}")
         if not domain:
             return None
 
@@ -294,6 +295,7 @@ async def find_contact_for_job(
             f"talent@{domain}",
             f"jobs@{domain}",
         ]
+        print(f"[EmailFinder] Using generic pattern email for {domain}: {generic_patterns[0]}")
         return ContactResult(
             email=generic_patterns[0],
             confidence="low",

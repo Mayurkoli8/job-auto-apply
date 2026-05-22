@@ -128,8 +128,18 @@ async def get_profile():
 @app.post("/api/run")
 async def trigger_run(request: RunRequest):
     """Trigger a manual application run."""
-    task = run_email_only_pipeline(request.limit) if request.email_only else run_daily_pipeline(request.limit)
-    asyncio.create_task(task)
+    task_coro = run_email_only_pipeline(request.limit) if request.email_only else run_daily_pipeline(request.limit)
+    task = asyncio.create_task(task_coro)
+
+    def _task_done(future: asyncio.Future):
+        try:
+            exc = future.exception()
+            if exc:
+                print(f"[Run] Background task failed: {exc}")
+        except asyncio.CancelledError:
+            print("[Run] Background task was cancelled")
+
+    task.add_done_callback(_task_done)
     return {
         "message": "Application run started in background",
         "limit": request.limit or settings.DAILY_LIMIT,

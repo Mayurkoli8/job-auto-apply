@@ -40,3 +40,4 @@ fake-useragent>=1.5.0
 pytz>=2024.1
 rich>=13.0.0
 typer>=0.12.0
+graphify>=1.0.0

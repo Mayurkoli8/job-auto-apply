@@ -1,6 +1,8 @@
 """
 email_generator.py — Human-like cold emails & cover letters via Gemini (free tier).
 
+Falls back to simple templates if Gemini quota is exceeded.
+
 Anti-AI-detection techniques baked into every prompt:
   • Varied sentence lengths (short punchy + long flowing)
   • Contractions: I'm, I've, it's, don't — mandated
@@ -49,13 +51,75 @@ def _links_block() -> str:
     return "\n".join(lines)
 
 
+def _template_cold_email(job: dict, profile: dict, contact_name: str = "", contact_title: str = "") -> dict:
+    """Simple template-based email (fallback when Gemini quota is exceeded)."""
+    name = profile.get('name', settings.USER_FULL_NAME)
+    greeting = f"Hi {contact_name.split()[0]}," if contact_name else "Hi there,"
+    company = job.get('company', 'the team')
+    title = job.get('title', 'position')
+    skills = ", ".join((profile.get("skills") or [])[:5])
+
+    subject = f"Interested in {title} at {company}"
+    body = f"""{greeting}
+
+I'm {name}, and I'm interested in the {title} role at {company}. With experience in {skills}, I believe I'd be a great fit for your team.
+
+I'd love to chat more about how I can contribute. Feel free to reach out!
+
+Thanks,
+{name}"""
+    
+    links = _links_block()
+    if links:
+        body = body.replace("Thanks,", f"{links}\n\nThanks,")
+    
+    return {"subject": subject, "body": body}
+
+
+def _template_cover_letter(job: dict, profile: dict) -> str:
+    """Simple template-based cover letter (fallback when Gemini quota is exceeded)."""
+    name = profile.get('name', settings.USER_FULL_NAME)
+    company = job.get('company', 'the company')
+    title = job.get('title', 'position')
+    skills = ", ".join((profile.get("skills") or [])[:5])
+    years = profile.get('total_experience_years', 'several')
+    
+    return f"""Dear Hiring Team,
+
+I'm writing to express my interest in the {title} position at {company}. With {years} years of experience in {skills}, I'm confident I can make an immediate impact on your team.
+
+Throughout my career, I've developed a strong foundation in the skills your role requires. I'm particularly drawn to {company} because of your commitment to innovation and excellence.
+
+I'd welcome the opportunity to discuss how my background aligns with your needs. Thank you for considering my application.
+
+Best regards,
+{name}"""
+
+
 async def generate_cold_email(
     job: dict,
     profile: dict,
     contact_name: str = "",
     contact_title: str = "",
 ) -> dict:
-    """Returns {"subject": str, "body": str}"""
+    """Returns {"subject": str, "body": str}. Falls back to simple template if Gemini quota exceeded."""
+    try:
+        return await _generate_cold_email_gemini(job, profile, contact_name, contact_title)
+    except Exception as e:
+        error_str = str(e).lower()
+        if "quota" in error_str or "429" in error_str or "rate" in error_str:
+            print(f"[Email] Gemini quota exceeded, using template fallback")
+            return _template_cold_email(job, profile, contact_name, contact_title)
+        raise
+
+
+async def _generate_cold_email_gemini(
+    job: dict,
+    profile: dict,
+    contact_name: str = "",
+    contact_title: str = "",
+) -> dict:
+    """Gemini-powered cold email generation."""
     skills_top = ", ".join((profile.get("skills") or [])[:8])
     exp_summary = ""
     for exp in (profile.get("experience") or [])[:2]:
@@ -115,7 +179,19 @@ The email must be 150-220 words. Be direct, specific, and genuinely interesting 
 
 
 async def generate_cover_letter(job: dict, profile: dict) -> str:
-    """Generate a 300-380 word human-like cover letter."""
+    """Generate a 300-380 word human-like cover letter. Falls back to template if Gemini quota exceeded."""
+    try:
+        return await _generate_cover_letter_gemini(job, profile)
+    except Exception as e:
+        error_str = str(e).lower()
+        if "quota" in error_str or "429" in error_str or "rate" in error_str:
+            print(f"[Email] Gemini quota exceeded, using cover letter template fallback")
+            return _template_cover_letter(job, profile)
+        raise
+
+
+async def _generate_cover_letter_gemini(job: dict, profile: dict) -> str:
+    """Gemini-powered cover letter generation."""
     skills_top = ", ".join((profile.get("skills") or [])[:10])
     exp_detail = ""
     for e in (profile.get("experience") or [])[:3]:
@@ -160,7 +236,26 @@ Output ONLY the cover letter text."""
 async def generate_follow_up_email(
     job: dict, profile: dict, days_since: int = 7
 ) -> dict:
-    """Short follow-up for an application sent X days ago."""
+    """Short follow-up for an application sent X days ago. Falls back to template if Gemini quota exceeded."""
+    try:
+        return await _generate_follow_up_email_gemini(job, profile, days_since)
+    except Exception as e:
+        error_str = str(e).lower()
+        if "quota" in error_str or "429" in error_str or "rate" in error_str:
+            print(f"[Email] Gemini quota exceeded, using follow-up template fallback")
+            name = profile.get('name', settings.USER_FULL_NAME)
+            company = job.get('company', 'the company')
+            return {
+                "subject": f"Following up on {job.get('title')} at {company}",
+                "body": f"Hi,\n\nJust following up on my recent application for the {job.get('title')} role. I remain very interested and happy to discuss further.\n\nThanks,\n{name}"
+            }
+        raise
+
+
+async def _generate_follow_up_email_gemini(
+    job: dict, profile: dict, days_since: int = 7
+) -> dict:
+    """Gemini-powered follow-up email generation."""
     prompt = f"""Write a short follow-up email. The candidate applied {days_since} days ago and hasn't heard back.
 
 Job: {job.get('title')} at {job.get('company')}

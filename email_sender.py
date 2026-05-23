@@ -162,13 +162,16 @@ def send_email_sync(
     
     # Try SendGrid first if configured and available
     if settings.SENDGRID_API_KEY and SENDGRID_AVAILABLE:
-        success, error = _send_via_sendgrid(to_address, subject, body, attach_resume)
-        if success:
+        sendgrid_success, sendgrid_error = _send_via_sendgrid(to_address, subject, body, attach_resume)
+        if sendgrid_success:
             return True, ""
         # If SendGrid fails and Gmail is configured, try Gmail as fallback
         if settings.GMAIL_ADDRESS and settings.GMAIL_APP_PASSWORD:
-            return _send_via_gmail(to_address, subject, body, attach_resume)
-        return False, f"SendGrid failed: {error}"
+            gmail_success, gmail_error = _send_via_gmail(to_address, subject, body, attach_resume)
+            if gmail_success:
+                return True, ""
+            return False, f"SendGrid failed: {sendgrid_error}; Gmail fallback failed: {gmail_error}"
+        return False, f"SendGrid failed: {sendgrid_error}"
     if settings.SENDGRID_API_KEY and not SENDGRID_AVAILABLE:
         if settings.GMAIL_ADDRESS and settings.GMAIL_APP_PASSWORD:
             return _send_via_gmail(to_address, subject, body, attach_resume)

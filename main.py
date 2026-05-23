@@ -53,6 +53,9 @@ def setup_scheduler():
         id="daily_apply",
         name="Daily Job Application",
         replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+        misfire_grace_time=60 * 60 * 6,
     )
     scheduler.start()
     print(f"[Scheduler] Daily run set for {settings.RUN_HOUR:02d}:{settings.RUN_MINUTE:02d} "

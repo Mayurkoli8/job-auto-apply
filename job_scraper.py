@@ -23,7 +23,7 @@ from fake_useragent import UserAgent
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from config import settings
-from database import upsert_job, get_all_job_ids
+from database import get_all_job_ids, get_all_job_keys, job_identity_key, upsert_job
 
 ua = UserAgent()
 
@@ -401,11 +401,11 @@ async def scrape_linkedin(keywords: List[str]) -> List[dict]:
 
 def deduplicate(jobs: List[dict], drop_counters: dict | None = None) -> List[dict]:
     seen_ids = set()
-    seen_titles = {}  # (company_lower, title_lower) -> True
+    seen_titles = set()
     result = []
     for job in jobs:
         jid = job["id"]
-        key = (job["company"].lower().strip(), job["title"].lower().strip())
+        key = job_identity_key(job.get("company"), job.get("title"))
         if jid in seen_ids or key in seen_titles:
             if drop_counters is not None:
                 drop_counters.setdefault('duplicate', 0)
@@ -419,7 +419,8 @@ def deduplicate(jobs: List[dict], drop_counters: dict | None = None) -> List[dic
                 drop_counters['excluded_company'] += 1
             continue
         seen_ids.add(jid)
-        seen_titles[key] = True
+        if key:
+            seen_titles.add(key)
         result.append(job)
     return result
 
@@ -471,10 +472,16 @@ async def scrape_all_jobs(profile: dict = None) -> List[dict]:
     deduped = deduplicate(filtered_jobs, drop_counters=drop_counters)
     deduped.sort(key=lambda j: j["match_score"], reverse=True)
 
-    # Filter already-seen jobs
+    # Filter already-seen jobs by source id and by normalized company/title.
     known_ids = await get_all_job_ids()
-    already_seen = sum(1 for j in deduped if j["id"] in known_ids)
-    new_jobs = [j for j in deduped if j["id"] not in known_ids]
+    known_keys = await get_all_job_keys()
+
+    def is_already_seen(job: dict) -> bool:
+        key = job_identity_key(job.get("company"), job.get("title"))
+        return job["id"] in known_ids or (key is not None and key in known_keys)
+
+    already_seen = sum(1 for j in deduped if is_already_seen(j))
+    new_jobs = [j for j in deduped if not is_already_seen(j)]
 
     # Save to DB (count saved entries)
     saved = 0

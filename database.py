@@ -6,6 +6,7 @@ DB path comes from config.DATABASE_PATH:
 """
 from __future__ import annotations
 from datetime import datetime
+import re
 from typing import Optional
 from sqlalchemy import (
     Column, String, Integer, DateTime, Text, Boolean, JSON, Float, create_engine
@@ -139,25 +140,91 @@ async def get_all_job_ids() -> set:
         return {row[0] for row in r.fetchall()}
 
 
+def _normalize_job_text(value: str | None) -> str:
+    value = (value or "").lower()
+    value = re.sub(r"[^a-z0-9]+", " ", value)
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def job_identity_key(company: str | None, title: str | None) -> tuple[str, str] | None:
+    company_key = _normalize_job_text(company)
+    title_key = _normalize_job_text(title)
+    if not company_key or not title_key:
+        return None
+    return company_key, title_key
+
+
+async def get_all_job_keys() -> set[tuple[str, str]]:
+    from sqlalchemy import select
+    async with AsyncSessionLocal() as s:
+        r = await s.execute(select(Job.company, Job.title))
+        return {
+            key for company, title in r.fetchall()
+            if (key := job_identity_key(company, title))
+        }
+
+
 async def upsert_job(job_data: dict) -> bool:
+    from sqlalchemy import select
     async with AsyncSessionLocal() as s:
         if await s.get(Job, job_data["id"]):
             return False
+        incoming_key = job_identity_key(job_data.get("company"), job_data.get("title"))
+        if incoming_key:
+            existing = await s.execute(select(Job.company, Job.title))
+            for company, title in existing.fetchall():
+                if job_identity_key(company, title) == incoming_key:
+                    return False
         s.add(Job(**job_data))
         await s.commit()
         return True
 
 
-async def get_pending_jobs(limit: int = 50) -> list[Job]:
+async def get_pending_jobs(limit: int = 50, min_match_score: float | None = None) -> list[Job]:
     from sqlalchemy import select
+    from config import settings
+    threshold = settings.MIN_MATCH_SCORE if min_match_score is None else min_match_score
     async with AsyncSessionLocal() as s:
-        result = await s.execute(
+        query = (
             select(Job)
             .where(Job.applied == False)
+            .where(Job.match_score >= threshold)
             .order_by(Job.match_score.desc())
             .limit(limit)
         )
+        result = await s.execute(query)
         return result.scalars().all()
+
+
+async def get_apply_skip_reason(job_data: dict, min_match_score: float | None = None) -> str:
+    from sqlalchemy import select
+    from config import settings
+    threshold = settings.MIN_MATCH_SCORE if min_match_score is None else min_match_score
+    job_id = job_data.get("id")
+    incoming_key = job_identity_key(job_data.get("company"), job_data.get("title"))
+    score = float(job_data.get("match_score") or 0.0)
+
+    async with AsyncSessionLocal() as s:
+        if job_id:
+            existing = await s.get(Job, job_id)
+            if existing:
+                if existing.applied:
+                    return "already applied to this job id"
+                score = float(existing.match_score or score)
+
+        if score < threshold:
+            return f"match score {score:.3f} below threshold {threshold:.3f}"
+
+        if incoming_key:
+            result = await s.execute(
+                select(Job.id, Job.company, Job.title)
+                .where(Job.applied == True)
+            )
+            for existing_id, company, title in result.fetchall():
+                if existing_id != job_id and job_identity_key(company, title) == incoming_key:
+                    return "same company/title already applied"
+
+    return ""
 
 
 async def mark_applied(job_id: str, method: str, contact_email: str = None,

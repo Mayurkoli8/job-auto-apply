@@ -17,7 +17,8 @@ from typing import List
 
 from config import settings
 from database import (
-    mark_applied, get_stats, AsyncSessionLocal, DailyStats, Job, get_pending_jobs
+    mark_applied, get_stats, AsyncSessionLocal, DailyStats, Job, get_pending_jobs,
+    get_apply_skip_reason,
 )
 from resume_parser import load_profile, parse_and_save_resume
 from job_scraper import scrape_all_jobs
@@ -30,6 +31,7 @@ from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
 
 console = Console()
+_PIPELINE_LOCK = asyncio.Lock()
 
 
 async def process_job_email(job: dict, profile: dict) -> bool:
@@ -115,9 +117,36 @@ def has_direct_apply_url(job: dict) -> bool:
     return any(p in url for p in APPLY_URL_PATTERNS)
 
 
+def _job_row_to_dict(job: Job) -> dict:
+    return {
+        "id": job.id,
+        "title": job.title,
+        "company": job.company,
+        "location": job.location,
+        "url": job.url,
+        "description": job.description,
+        "salary": job.salary,
+        "source": job.source,
+        "posted_at": job.posted_at,
+        "match_score": job.match_score or 0.0,
+    }
+
+
+async def _apply_skip_reason(job: dict) -> str:
+    return await get_apply_skip_reason(job, settings.MIN_MATCH_SCORE)
+
+
 # ── Main daily pipeline ───────────────────────────────────────────────────────
 
 async def run_daily_pipeline(limit: int = None) -> dict:
+    if _PIPELINE_LOCK.locked():
+        console.print("[yellow]Apply pipeline is already running; skipping duplicate trigger.[/yellow]")
+        return {"skipped": 0, "errors": 0, "total_applied": 0, "message": "pipeline already running"}
+    async with _PIPELINE_LOCK:
+        return await _run_daily_pipeline(limit)
+
+
+async def _run_daily_pipeline(limit: int = None) -> dict:
     limit = limit or settings.DAILY_LIMIT
     today = datetime.utcnow().strftime("%Y-%m-%d")
 
@@ -158,18 +187,7 @@ async def run_daily_pipeline(limit: int = None) -> dict:
     all_candidates = list(new_jobs)
     for job in pending_jobs:
         if job.id not in seen_ids:
-            all_candidates.append({
-                "id": job.id,
-                "title": job.title,
-                "company": job.company,
-                "location": job.location,
-                "url": job.url,
-                "description": job.description,
-                "salary": job.salary,
-                "source": job.source,
-                "posted_at": job.posted_at,
-                "match_score": job.match_score or 0.0,
-            })
+            all_candidates.append(_job_row_to_dict(job))
     all_candidates.sort(key=lambda j: j["match_score"], reverse=True)
     jobs_to_apply = all_candidates[:limit]
 
@@ -199,6 +217,13 @@ async def run_daily_pipeline(limit: int = None) -> dict:
             )
 
             try:
+                skip_reason = await _apply_skip_reason(job)
+                if skip_reason:
+                    console.print(f"  [yellow]Skipped {job['company']} - {skip_reason}[/yellow]")
+                    skipped += 1
+                    progress.advance(task)
+                    continue
+
                 # PRIMARY: cold email
                 email_success = await process_job_email(job, profile)
                 if email_success:
@@ -272,6 +297,14 @@ async def run_daily_pipeline(limit: int = None) -> dict:
 
 
 async def run_email_only_pipeline(limit: int = None) -> dict:
+    if _PIPELINE_LOCK.locked():
+        console.print("[yellow]Apply pipeline is already running; skipping duplicate trigger.[/yellow]")
+        return {"applied": 0, "scraped": 0, "skipped": 0, "errors": 0, "message": "pipeline already running"}
+    async with _PIPELINE_LOCK:
+        return await _run_email_only_pipeline(limit)
+
+
+async def _run_email_only_pipeline(limit: int = None) -> dict:
     """Run only the cold email pipeline (faster, more reliable)."""
     limit = limit or settings.DAILY_LIMIT
     profile = await load_profile()
@@ -283,24 +316,24 @@ async def run_email_only_pipeline(limit: int = None) -> dict:
     seen_ids = {job['id'] for job in new_jobs}
     for job in pending_jobs:
         if job.id not in seen_ids:
-            all_jobs.append({
-                'id': job.id,
-                'title': job.title,
-                'company': job.company,
-                'location': job.location,
-                'url': job.url,
-                'description': job.description,
-                'salary': job.salary,
-                'source': job.source,
-                'posted_at': job.posted_at,
-                'match_score': job.match_score or 0.0,
-            })
+            all_jobs.append(_job_row_to_dict(job))
     all_jobs.sort(key=lambda j: j['match_score'], reverse=True)
     applied = 0
+    skipped = 0
+    errors = 0
     for job in all_jobs[:limit]:
-        success = await process_job_email(job, profile)
-        if success:
-            applied += 1
+        skip_reason = await _apply_skip_reason(job)
+        if skip_reason:
+            console.print(f"  [yellow]Skipped {job['company']} - {skip_reason}[/yellow]")
+            skipped += 1
+            continue
+        try:
+            success = await process_job_email(job, profile)
+            if success:
+                applied += 1
+        except Exception as e:
+            console.print(f"  [red]Error on {job['company']}: {e}[/red]")
+            errors += 1
         delay = random.uniform(60, 120)  # 1-2 min between emails
         await asyncio.sleep(delay)
-    return {"applied": applied, "scraped": len(new_jobs)}
+    return {"applied": applied, "scraped": len(new_jobs), "skipped": skipped, "errors": errors}

@@ -35,13 +35,16 @@ try:
     from sendgrid.helpers.mail import (
         Attachment,
         Bcc,
+        ClickTracking,
         Disposition,
         Email,
         FileContent,
         FileName,
         FileType,
         Mail,
+        OpenTracking,
         ReplyTo,
+        TrackingSettings,
     )
     SENDGRID_AVAILABLE = True
 except ImportError:
@@ -313,6 +316,10 @@ def _send_via_sendgrid(
             plain_text_content=body,
         )
         mail.reply_to = ReplyTo(sender_email, _sender_name())
+        mail.tracking_settings = TrackingSettings(
+            click_tracking=ClickTracking(enable=False, enable_text=False),
+            open_tracking=OpenTracking(enable=False),
+        )
         audit_bcc = _audit_bcc_email(to_address)
         if audit_bcc and mail.personalizations:
             mail.personalizations[0].add_bcc(Bcc(audit_bcc))

@@ -32,7 +32,7 @@ from config import settings
 from database import init_db, get_stats, AsyncSessionLocal, Job, update_job_status
 from resume_parser import parse_and_save_resume, load_profile
 from orchestrator import run_daily_pipeline, run_email_only_pipeline
-from email_sender import test_email_config
+from email_sender import test_email_config, test_email_config_detailed
 
 import uvicorn
 
@@ -207,8 +207,7 @@ async def update_status(job_id: str, update: StatusUpdate):
 
 @app.post("/api/test-email")
 async def send_test_email():
-    success = await test_email_config()
-    return {"success": success, "message": "Check your inbox!" if success else "Email failed — check config"}
+    return await test_email_config_detailed()
 
 
 @app.get("/api/stats-detailed")

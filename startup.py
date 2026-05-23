@@ -54,14 +54,20 @@ def hydrate_resume() -> str:
 def preflight_check() -> list[str]:
     from config import settings
     missing = []
+    has_sendgrid = bool(settings.SENDGRID_API_KEY)
+    has_gmail = bool(settings.GMAIL_ADDRESS and settings.GMAIL_APP_PASSWORD)
+
     if not settings.GEMINI_API_KEY:
         missing.append("GEMINI_API_KEY  →  aistudio.google.com/app/apikey  (free)")
-    if not settings.GMAIL_ADDRESS:
-        missing.append("GMAIL_ADDRESS")
-    if not settings.GMAIL_APP_PASSWORD:
-        missing.append("GMAIL_APP_PASSWORD  →  myaccount.google.com/apppasswords")
     if not settings.USER_EMAIL:
         missing.append("USER_EMAIL")
+    if not has_sendgrid and not has_gmail:
+        missing.append("SENDGRID_API_KEY or GMAIL_ADDRESS + GMAIL_APP_PASSWORD")
+    elif not has_sendgrid:
+        if not settings.GMAIL_ADDRESS:
+            missing.append("GMAIL_ADDRESS")
+        if not settings.GMAIL_APP_PASSWORD:
+            missing.append("GMAIL_APP_PASSWORD  →  myaccount.google.com/apppasswords")
     if not settings.JOB_TITLES:
         missing.append("JOB_TITLES  e.g.  [\"AI Engineer\", \"ML Engineer\"]")
     return missing

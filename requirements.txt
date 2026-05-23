@@ -26,7 +26,7 @@ playwright>=1.47.0
 
 # Email
 secure-smtplib>=0.1.1
-sendgrid>=7.0.0
+sendgrid>=6.12.0,<7
 
 # AI — Google Gemini (free tier)
 google-generativeai>=0.8.0
@@ -41,4 +41,3 @@ fake-useragent>=1.5.0
 pytz>=2024.1
 rich>=13.0.0
 typer>=0.12.0
-graphify>=1.0.0

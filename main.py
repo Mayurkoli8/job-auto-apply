@@ -242,9 +242,9 @@ async def dashboard():
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="data:,">
   <title>Job Auto-Apply — AI-Powered Job Bot</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -374,6 +374,36 @@ async def dashboard():
     .profile-value { font-size: 14px; color: #e2e8f0; word-break: break-word; }
     .skill-list { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
     .skill-tag { background: rgba(56, 189, 248, 0.1); border: 1px solid #38bdf8; color: #38bdf8; padding: 4px 10px; border-radius: 4px; font-size: 12px; }
+    .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+    .section-heading h3 { color: #38bdf8; font-size: 20px; }
+    .metric-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px; }
+    .metric {
+      border-top: 1px solid #334155;
+      padding-top: 12px;
+    }
+    .metric-value { font-size: 24px; font-weight: 700; color: #e2e8f0; }
+    .metric-label { font-size: 12px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
+    .analytics-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr); gap: 24px; }
+    .analytics-panel { min-height: 260px; }
+    .analytics-panel h4 { font-size: 14px; color: #cbd5e1; margin-bottom: 14px; }
+    .bar-chart { display: flex; flex-direction: column; gap: 10px; }
+    .bar-row { display: grid; grid-template-columns: minmax(84px, 140px) 1fr 42px; gap: 10px; align-items: center; font-size: 12px; color: #cbd5e1; }
+    .bar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bar-track { height: 10px; background: rgba(148, 163, 184, 0.16); border-radius: 999px; overflow: hidden; }
+    .bar-fill { height: 100%; background: linear-gradient(90deg, #38bdf8, #22c55e); border-radius: 999px; min-width: 2px; }
+    .bar-value { text-align: right; color: #94a3b8; }
+    .timeline-chart {
+      height: 180px;
+      display: grid;
+      grid-auto-flow: column;
+      grid-auto-columns: minmax(6px, 1fr);
+      align-items: end;
+      gap: 4px;
+      padding: 12px 0 4px;
+      border-bottom: 1px solid #334155;
+    }
+    .timeline-bar { background: #38bdf8; border-radius: 4px 4px 0 0; min-height: 2px; opacity: 0.9; }
+    .empty-state { color: #94a3b8; font-size: 14px; padding: 12px 0; }
     .spinner {
       display: inline-block;
       width: 20px;
@@ -384,6 +414,14 @@ async def dashboard():
       animation: spin 1s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+    @media (max-width: 760px) {
+      .container { padding: 14px; }
+      .tabs { overflow-x: auto; }
+      .tab { padding: 12px 14px; white-space: nowrap; }
+      .input-group { flex-direction: column; }
+      .analytics-grid { grid-template-columns: 1fr; }
+      .bar-row { grid-template-columns: minmax(70px, 110px) 1fr 34px; }
+    }
   </style>
 </head>
 <body>
@@ -419,6 +457,7 @@ async def dashboard():
     <div class="card">
       <div class="tabs">
         <button class="tab active" onclick="switchTab(this, 'dashboard')">Dashboard</button>
+        <button class="tab" onclick="switchTab(this, 'analytics')">Analytics</button>
         <button class="tab" onclick="switchTab(this, 'resume')">Resume</button>
         <button class="tab" onclick="switchTab(this, 'jobs')">Jobs</button>
         <button class="tab" onclick="switchTab(this, 'run')">Run Now</button>
@@ -436,6 +475,31 @@ async def dashboard():
         <hr style="margin: 24px 0; border: none; border-top: 1px solid #334155;">
         <h3 style="margin-bottom: 16px; color: #38bdf8;">Recent Applications</h3>
         <div id="recent-jobs">Loading...</div>
+      </div>
+
+      <!-- Analytics Tab -->
+      <div id="analytics" class="tab-content">
+        <div class="section-heading">
+          <h3>Analytics</h3>
+          <button class="btn btn-small btn-secondary" onclick="loadDetailedStats()">Refresh</button>
+        </div>
+        <div id="analytics-summary" class="metric-row">
+          <div class="empty-state">Loading analytics...</div>
+        </div>
+        <div class="analytics-grid">
+          <section class="analytics-panel">
+            <h4>Applications over 30 days</h4>
+            <div id="chart-timeline"></div>
+          </section>
+          <section class="analytics-panel">
+            <h4>Jobs by source</h4>
+            <div id="chart-source"></div>
+          </section>
+          <section class="analytics-panel">
+            <h4>Match score distribution</h4>
+            <div id="chart-match"></div>
+          </section>
+        </div>
       </div>
 
       <!-- Resume Tab -->
@@ -481,12 +545,80 @@ async def dashboard():
   <script>
     let currentFilter = 'all';
 
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, c => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      }[c]));
+    }
+
+    function safeHttpUrl(value) {
+      if (!value) return '';
+      try {
+        const url = new URL(value, window.location.href);
+        return ['http:', 'https:'].includes(url.protocol) ? url.href : '';
+      } catch (_) {
+        return '';
+      }
+    }
+
+    function renderEmpty(containerId, message) {
+      document.getElementById(containerId).innerHTML = `<div class="empty-state">${escapeHtml(message)}</div>`;
+    }
+
+    function renderBarChart(containerId, data, limit = 8) {
+      const entries = Object.entries(data || {})
+        .filter(([, value]) => Number(value) > 0)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, limit);
+      if (!entries.length) {
+        renderEmpty(containerId, 'No data yet');
+        return;
+      }
+      const max = Math.max(...entries.map(([, value]) => Number(value)), 1);
+      document.getElementById(containerId).innerHTML = `
+        <div class="bar-chart">
+          ${entries.map(([label, value]) => {
+            const width = Math.max(2, Math.round((Number(value) / max) * 100));
+            return `
+              <div class="bar-row" title="${escapeHtml(label)}: ${Number(value)}">
+                <div class="bar-label">${escapeHtml(label)}</div>
+                <div class="bar-track"><div class="bar-fill" style="width: ${width}%"></div></div>
+                <div class="bar-value">${Number(value)}</div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    }
+
+    function renderTimeline(containerId, data) {
+      const entries = Object.entries(data || {}).sort((a, b) => a[0].localeCompare(b[0]));
+      if (!entries.length || entries.every(([, value]) => Number(value) === 0)) {
+        renderEmpty(containerId, 'No applications recorded in the last 30 days');
+        return;
+      }
+      const max = Math.max(...entries.map(([, value]) => Number(value)), 1);
+      document.getElementById(containerId).innerHTML = `
+        <div class="timeline-chart">
+          ${entries.map(([date, value]) => {
+            const height = Math.max(2, Math.round((Number(value) / max) * 100));
+            return `<div class="timeline-bar" title="${escapeHtml(date)}: ${Number(value)}" style="height: ${height}%"></div>`;
+          }).join('')}
+        </div>
+      `;
+    }
+
     // Tab switching
     function switchTab(button, tab) {
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
       document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
       button.classList.add('active');
       document.getElementById(tab).classList.add('active');
+      if (tab === 'analytics') loadDetailedStats();
       if (tab === 'jobs') loadJobs();
       if (tab === 'resume') loadProfile();
     }
@@ -504,6 +636,41 @@ async def dashboard():
           document.getElementById('stat-nextrun').textContent = next.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
         }
       } catch (e) { console.error('Stats error:', e); }
+    }
+
+    async function loadDetailedStats() {
+      try {
+        const r = await fetch('/api/stats-detailed');
+        const d = await r.json();
+        const summary = d.summary || {};
+        document.getElementById('analytics-summary').innerHTML = `
+          <div class="metric">
+            <div class="metric-value">${Number(summary.total_jobs || 0)}</div>
+            <div class="metric-label">Total Jobs</div>
+          </div>
+          <div class="metric">
+            <div class="metric-value">${Number(summary.applied || 0)}</div>
+            <div class="metric-label">Applied</div>
+          </div>
+          <div class="metric">
+            <div class="metric-value">${Number(summary.pending || 0)}</div>
+            <div class="metric-label">Pending</div>
+          </div>
+          <div class="metric">
+            <div class="metric-value">${Number(summary.average_match_score || 0).toFixed(3)}</div>
+            <div class="metric-label">Avg Match</div>
+          </div>
+        `;
+        renderTimeline('chart-timeline', d.timeline_30_days || {});
+        renderBarChart('chart-source', summary.by_source || {});
+        renderBarChart('chart-match', d.match_score_distribution || {}, 5);
+      } catch (e) {
+        console.error('Detailed stats error:', e);
+        renderEmpty('analytics-summary', 'Unable to load analytics');
+        renderEmpty('chart-timeline', 'Unable to load timeline');
+        renderEmpty('chart-source', 'Unable to load source data');
+        renderEmpty('chart-match', 'Unable to load match scores');
+      }
     }
 
     // Upload resume
@@ -524,10 +691,10 @@ async def dashboard():
           loadProfile();
           setTimeout(() => loadStats(), 1000);
         } else {
-          resultDiv.innerHTML = '<div class="alert alert-error">❌ ' + (d.detail || JSON.stringify(d)) + '</div>';
+          resultDiv.innerHTML = '<div class="alert alert-error">❌ ' + escapeHtml(d.detail || JSON.stringify(d)) + '</div>';
         }
       } catch (e) {
-        resultDiv.innerHTML = '<div class="alert alert-error">❌ Error: ' + e.message + '</div>';
+        resultDiv.innerHTML = '<div class="alert alert-error">❌ Error: ' + escapeHtml(e.message) + '</div>';
       }
     }
 
@@ -544,28 +711,28 @@ async def dashboard():
         let html = `
           <div class="profile-item">
             <div class="profile-label">Name</div>
-            <div class="profile-value">${p.name}</div>
+            <div class="profile-value">${escapeHtml(p.name || 'N/A')}</div>
           </div>
           <div class="profile-item">
             <div class="profile-label">Email</div>
-            <div class="profile-value">${p.email || 'N/A'}</div>
+            <div class="profile-value">${escapeHtml(p.email || 'N/A')}</div>
           </div>
           <div class="profile-item">
             <div class="profile-label">Phone</div>
-            <div class="profile-value">${p.phone || 'N/A'}</div>
+            <div class="profile-value">${escapeHtml(p.phone || 'N/A')}</div>
           </div>
           <div class="profile-item">
             <div class="profile-label">Location</div>
-            <div class="profile-value">${p.location || 'N/A'}</div>
+            <div class="profile-value">${escapeHtml(p.location || 'N/A')}</div>
           </div>
           <div class="profile-item">
             <div class="profile-label">Experience</div>
-            <div class="profile-value">${p.total_experience_years || 0} years</div>
+            <div class="profile-value">${escapeHtml(p.total_experience_years || 0)} years</div>
           </div>
           <div class="profile-item">
             <div class="profile-label">Skills (${(p.skills || []).length})</div>
             <div class="skill-list">
-              ${(p.skills || []).slice(0, 15).map(s => `<span class="skill-tag">${s}</span>`).join('')}
+              ${(p.skills || []).slice(0, 15).map(s => `<span class="skill-tag">${escapeHtml(s)}</span>`).join('')}
               ${(p.skills || []).length > 15 ? `<span class="skill-tag">+${(p.skills || []).length - 15} more</span>` : ''}
             </div>
           </div>
@@ -587,21 +754,25 @@ async def dashboard():
           document.getElementById('jobs-list').innerHTML = '<div class="alert alert-info">No jobs found. Run the job scraper to fetch listings.</div>';
           return;
         }
-        document.getElementById('jobs-list').innerHTML = d.jobs.map(j => `
-          <div class="job-item">
-            <div class="job-title">${j.title}</div>
-            <div class="job-company">${j.company}</div>
-            <div class="job-meta">
-              <span class="badge">${j.source}</span>
-              <span class="badge">${j.apply_method || 'email'}</span>
-              <span class="badge ${j.applied ? 'badge-success' : 'badge-pending'}">${j.status || 'pending'}</span>
+        document.getElementById('jobs-list').innerHTML = d.jobs.map(j => {
+          const jobUrl = safeHttpUrl(j.url);
+          const emailHref = j.contact_email ? `mailto:${encodeURIComponent(j.contact_email)}` : '';
+          return `
+            <div class="job-item">
+              <div class="job-title">${escapeHtml(j.title || 'Untitled')}</div>
+              <div class="job-company">${escapeHtml(j.company || 'Unknown company')}</div>
+              <div class="job-meta">
+                <span class="badge">${escapeHtml(j.source || 'unknown')}</span>
+                <span class="badge">${escapeHtml(j.apply_method || 'email')}</span>
+                <span class="badge ${j.applied ? 'badge-success' : 'badge-pending'}">${escapeHtml(j.status || 'pending')}</span>
+              </div>
+              <div class="job-actions">
+                ${jobUrl ? `<a href="${escapeHtml(jobUrl)}" target="_blank" rel="noopener noreferrer" class="btn btn-small">View Job</a>` : ''}
+                ${emailHref ? `<a href="${escapeHtml(emailHref)}" class="btn btn-small btn-secondary">Email</a>` : ''}
+              </div>
             </div>
-            <div class="job-actions">
-              ${j.url ? `<a href="${j.url}" target="_blank" class="btn btn-small">View Job</a>` : ''}
-              ${j.contact_email ? `<a href="mailto:${j.contact_email}" class="btn btn-small btn-secondary">Email</a>` : ''}
-            </div>
-          </div>
-        `).join('');
+          `;
+        }).join('');
       } catch (e) {
         document.getElementById('jobs-list').innerHTML = '<div class="alert alert-error">Error loading jobs</div>';
       }
@@ -618,9 +789,9 @@ async def dashboard():
         }
         document.getElementById('recent-jobs').innerHTML = d.jobs.map(j => `
           <div class="job-item">
-            <div class="job-title">${j.title}</div>
-            <div class="job-company">${j.company}</div>
-            <div class="job-meta"><span class="badge">${j.source}</span> <span class="badge">${j.status || 'pending'}</span></div>
+            <div class="job-title">${escapeHtml(j.title || 'Untitled')}</div>
+            <div class="job-company">${escapeHtml(j.company || 'Unknown company')}</div>
+            <div class="job-meta"><span class="badge">${escapeHtml(j.source || 'unknown')}</span> <span class="badge">${escapeHtml(j.status || 'pending')}</span></div>
           </div>
         `).join('');
       } catch (e) {
@@ -642,7 +813,7 @@ async def dashboard():
         body: JSON.stringify({ email_only: emailOnly, limit: 50 })
       });
       const d = await r.json();
-      document.getElementById('run-status').innerHTML = '<div class="alert alert-success">✅ ' + d.message + '</div>';
+      document.getElementById('run-status').innerHTML = '<div class="alert alert-success">✅ ' + escapeHtml(d.message) + '</div>';
       setTimeout(() => loadStats(), 3000);
       setTimeout(() => loadRecentJobs(), 5000);
     }
@@ -656,7 +827,7 @@ async def dashboard():
         body: JSON.stringify({ email_only: emailOnly, limit })
       });
       const d = await r.json();
-      document.getElementById('custom-run-result').innerHTML = '<div class="alert alert-success">✅ ' + d.message + ' (Limit: ' + limit + ')</div>';
+      document.getElementById('custom-run-result').innerHTML = '<div class="alert alert-success">✅ ' + escapeHtml(d.message) + ' (Limit: ' + limit + ')</div>';
     }
 
     // Test email
@@ -693,8 +864,10 @@ async def dashboard():
 
     // Init
     loadStats();
+    loadDetailedStats();
     loadRecentJobs();
     setInterval(loadStats, 30000);
+    setInterval(loadDetailedStats, 60000);
     setInterval(loadRecentJobs, 60000);
   </script>
 </body>

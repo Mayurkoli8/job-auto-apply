@@ -9,7 +9,7 @@ Runs every morning at **8:00 AM IST** automatically.
 | Component | Service | Cost |
 |-----------|---------|------|
 | AI (resume parse, email write, form mapping) | Gemini 1.5 Flash | Free |
-| Email sending | Gmail SMTP | Free |
+| Email sending | SendGrid API + Gmail fallback | Free |
 | Hosting + scheduler | Render Web Service | Free |
 | Database | SQLite in `/tmp` | Free |
 | Resume hosting | mayurkoli.mentesa.live | Already free |
@@ -49,12 +49,15 @@ Go to **Your Service → Environment → Add Environment Variable**.
 | Variable | Value | Where to get |
 |----------|-------|--------------|
 | `GEMINI_API_KEY` | `AIzaSy...` | [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) — free, 30 sec |
-| `GMAIL_ADDRESS` | `you@gmail.com` | Your Gmail |
+| `SENDGRID_API_KEY` | `SG...` | [sendgrid.com](https://sendgrid.com) - recommended on Render |
+| `GMAIL_ADDRESS` | `you@gmail.com` | Your Gmail fallback |
 | `GMAIL_APP_PASSWORD` | `xxxx xxxx xxxx xxxx` | [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) |
 | `USER_EMAIL` | `you@gmail.com` | Used in email signatures |
 | `USER_PHONE` | `+91-XXXXXXXXXX` | Your number |
 | `USER_LINKEDIN` | `https://linkedin.com/in/...` | Your LinkedIn URL |
 | `USER_GITHUB` | `https://github.com/...` | Your GitHub URL |
+
+On Render, SendGrid is the recommended email path. Gmail can stay blank if `SENDGRID_API_KEY` and `USER_EMAIL` are set.
 
 Everything else (`RESUME_URL`, `DATABASE_PATH`, `JOB_TITLES`, `TIMEZONE`, etc.)
 is **already set** in `render.yaml` — you don't need to touch them.
@@ -101,7 +104,7 @@ For each job (up to 50/day):
   ① Find HR email
        Hunter.io → website scrape → pattern guess (hr@, careers@, recruiting@)
   ② Generate cold email via Gemini  ← human-like, anti-AI-detection prompt
-  ③ Send via Gmail SMTP with resume PDF attached          ← PRIMARY
+  ③ Send via SendGrid API or Gmail SMTP with resume PDF attached
   ④ If job has Greenhouse/Lever/Workday URL → fill form  ← FALLBACK
         ↓
 Log every application to SQLite (/tmp/jobs.db)
@@ -137,7 +140,7 @@ job-auto-apply/
 ├── job_scraper.py     7 sources → deduplicated, scored job list
 ├── email_finder.py    HR email discovery (Hunter → scrape → pattern)
 ├── email_generator.py Human-like cold email + cover letter (Gemini)
-├── email_sender.py    Gmail SMTP with resume attachment
+├── email_sender.py    SendGrid API + Gmail SMTP email sender
 ├── form_filler.py     Playwright + Gemini vision form automation
 ├── ats_handlers.py    Greenhouse, Lever, Workday, Ashby, SmartRecruiters...
 ├── orchestrator.py    Daily pipeline coordinator

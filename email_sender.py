@@ -15,6 +15,8 @@ SendGrid (recommended for Render):
 """
 from __future__ import annotations
 import asyncio
+import base64
+import mimetypes
 import smtplib
 import ssl
 from email.mime.multipart import MIMEMultipart
@@ -38,6 +40,26 @@ except ImportError:
 
 GMAIL_SMTP_HOST = "smtp.gmail.com"
 GMAIL_SMTP_PORT = 465   # SSL
+
+
+def _sendgrid_sender_email() -> str:
+    """Return the verified sender address expected by SendGrid."""
+    return (settings.USER_EMAIL or settings.GMAIL_ADDRESS or "").strip()
+
+
+def _test_recipient_email() -> str:
+    """Prefer the profile email, but allow Gmail-only local testing."""
+    return (settings.USER_EMAIL or settings.GMAIL_ADDRESS or "").strip()
+
+
+def _configured_email_provider() -> str:
+    if settings.SENDGRID_API_KEY and SENDGRID_AVAILABLE:
+        return "SendGrid"
+    if settings.SENDGRID_API_KEY and not SENDGRID_AVAILABLE:
+        return "SendGrid configured, package unavailable"
+    if settings.GMAIL_ADDRESS and settings.GMAIL_APP_PASSWORD:
+        return "Gmail SMTP"
+    return "not configured"
 
 
 def _build_message(
@@ -94,6 +116,10 @@ def send_email_sync(
         if settings.GMAIL_ADDRESS and settings.GMAIL_APP_PASSWORD:
             return _send_via_gmail(to_address, subject, body, attach_resume)
         return False, f"SendGrid failed: {error}"
+    if settings.SENDGRID_API_KEY and not SENDGRID_AVAILABLE:
+        if settings.GMAIL_ADDRESS and settings.GMAIL_APP_PASSWORD:
+            return _send_via_gmail(to_address, subject, body, attach_resume)
+        return False, "SendGrid package not installed"
     
     # Fall back to Gmail
     if settings.GMAIL_ADDRESS and settings.GMAIL_APP_PASSWORD:
@@ -133,10 +159,13 @@ def _send_via_sendgrid(
     """Send via SendGrid API."""
     if not SENDGRID_AVAILABLE:
         return False, "SendGrid package not installed"
+    sender_email = _sendgrid_sender_email()
+    if not sender_email:
+        return False, "USER_EMAIL or GMAIL_ADDRESS is required as the SendGrid sender"
     
     try:
         mail = Mail(
-            from_email=settings.USER_EMAIL,
+            from_email=sender_email,
             to_emails=to_address,
             subject=subject,
             plain_text_content=body,
@@ -149,10 +178,12 @@ def _send_via_sendgrid(
                 with open(resume_path, "rb") as f:
                     file_content = f.read()
                 filename = f"{settings.USER_FULL_NAME.replace(' ','_')}_Resume{resume_path.suffix}"
+                encoded_content = base64.b64encode(file_content).decode("ascii")
+                mime_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
                 attachment = Attachment(
-                    FileContent(file_content),
+                    FileContent(encoded_content),
                     FileName(filename),
-                    FileType("application/octet-stream"),
+                    FileType(mime_type),
                     Disposition("attachment"),
                 )
                 mail.attachment = attachment
@@ -241,13 +272,20 @@ async def send_batch(
 async def test_email_config() -> bool:
     """Send a test email to yourself to verify config."""
     print("[Email] Sending test email...")
+    recipient = _test_recipient_email()
+    if not recipient:
+        print("[Email] Test email skipped: set USER_EMAIL or GMAIL_ADDRESS first")
+        return False
+
+    provider = _configured_email_provider()
     success = await send_email(
-        to_address=settings.GMAIL_ADDRESS,
+        to_address=recipient,
         subject="Job Auto-Apply — Configuration Test",
         body=(
             f"Hi {settings.USER_FULL_NAME},\n\n"
             "Your job auto-apply platform is configured correctly.\n\n"
-            f"Gmail: {settings.GMAIL_ADDRESS}\n"
+            f"Email provider: {provider}\n"
+            f"Recipient: {recipient}\n"
             f"Resume path: {settings.RESUME_PATH}\n\n"
             "You're all set!"
         ),

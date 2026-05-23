@@ -4,9 +4,15 @@ config.py — Centralised settings loaded from .env / Render environment variabl
 from __future__ import annotations
 import json
 import os
+import sys
 from typing import List, Optional
 from pydantic_settings import BaseSettings
 from pydantic import field_validator
+
+
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
 
 
 class Settings(BaseSettings):
@@ -80,7 +86,7 @@ class Settings(BaseSettings):
                 return [x.strip() for x in v.split(",") if x.strip()]
         return v
 
-    @field_validator("GMAIL_ADDRESS", "GMAIL_APP_PASSWORD", "RESUME_URL", "JOB_LOCATION", "USER_LINKEDIN", "USER_GITHUB", "USER_PORTFOLIO", mode="before")
+    @field_validator("GMAIL_ADDRESS", "GMAIL_APP_PASSWORD", "SENDGRID_API_KEY", "USER_EMAIL", "RESUME_URL", "JOB_LOCATION", "USER_LINKEDIN", "USER_GITHUB", "USER_PORTFOLIO", mode="before")
     @classmethod
     def strip_quotes(cls, v):
         if isinstance(v, str):

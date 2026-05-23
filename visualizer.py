@@ -1,5 +1,5 @@
 """
-visualizer.py — Job application stats visualization using graphify.
+visualizer.py — Job application stats aggregation.
 
 Generates charts for:
   • Applications over time (line graph)
@@ -9,9 +9,7 @@ Generates charts for:
 """
 from __future__ import annotations
 from datetime import datetime, timedelta
-from typing import Optional
 from sqlalchemy import select, func
-from graphify import BarChart, LineChart, PieChart
 from database import Job, AsyncSessionLocal
 
 
@@ -22,7 +20,7 @@ async def get_jobs_by_source() -> dict[str, int]:
             select(Job.source, func.count(Job.id).label('count'))
             .group_by(Job.source)
         )
-        return {row[0]: row[1] for row in result.fetchall()}
+        return {row[0] or "Unknown": row[1] for row in result.fetchall()}
 
 
 async def get_applications_over_time(days: int = 30) -> dict[str, int]:
@@ -41,7 +39,15 @@ async def get_applications_over_time(days: int = 30) -> dict[str, int]:
             .group_by(func.date(Job.applied_at))
             .order_by(func.date(Job.applied_at))
         )
-        return {str(row[0]): row[1] for row in result.fetchall()}
+        counts = {str(row[0]): row[1] for row in result.fetchall() if row[0]}
+        today = datetime.utcnow().date()
+        return {
+            (today - timedelta(days=offset)).isoformat(): counts.get(
+                (today - timedelta(days=offset)).isoformat(),
+                0,
+            )
+            for offset in range(days - 1, -1, -1)
+        }
 
 
 async def get_match_score_distribution() -> dict[str, int]:
@@ -61,7 +67,8 @@ async def get_match_score_distribution() -> dict[str, int]:
             "0.8-1.0": 0,
         }
         
-        for score in scores:
+        for raw_score in scores:
+            score = raw_score or 0.0
             if score < 0.2:
                 buckets["0.0-0.2"] += 1
             elif score < 0.4:
@@ -77,48 +84,42 @@ async def get_match_score_distribution() -> dict[str, int]:
 
 
 def generate_jobs_by_source_chart(data: dict[str, int]) -> str:
-    """Generate bar chart of jobs by source."""
+    """Generate a compact text chart of jobs by source."""
     if not data:
         return "No data available"
-    
-    chart = BarChart(
-        title="Jobs by Source",
-        x_axis_label="Source",
-        y_axis_label="Count",
-        data=data,
+
+    max_count = max(data.values()) or 1
+    return "\n".join(
+        f"{source}: {'#' * max(1, round((count / max_count) * 20))} {count}"
+        for source, count in sorted(data.items(), key=lambda item: item[1], reverse=True)
     )
-    return chart.render()
 
 
 def generate_applications_timeline(data: dict[str, int]) -> str:
-    """Generate line chart of applications over time."""
+    """Generate a compact text chart of applications over time."""
     if not data:
         return "No data available"
     
     # Ensure chronological order
     sorted_data = dict(sorted(data.items()))
-    
-    chart = LineChart(
-        title="Applications Over Time",
-        x_axis_label="Date",
-        y_axis_label="Applications",
-        data=sorted_data,
+
+    max_count = max(sorted_data.values()) or 1
+    return "\n".join(
+        f"{date}: {'#' * max(1, round((count / max_count) * 20)) if count else '-'} {count}"
+        for date, count in sorted_data.items()
     )
-    return chart.render()
 
 
 def generate_match_score_histogram(data: dict[str, int]) -> str:
-    """Generate histogram of match score distribution."""
+    """Generate a compact text histogram of match score distribution."""
     if not data:
         return "No data available"
-    
-    chart = BarChart(
-        title="Match Score Distribution",
-        x_axis_label="Score Range",
-        y_axis_label="Count",
-        data=data,
+
+    max_count = max(data.values()) or 1
+    return "\n".join(
+        f"{bucket}: {'#' * max(1, round((count / max_count) * 20)) if count else '-'} {count}"
+        for bucket, count in data.items()
     )
-    return chart.render()
 
 
 async def generate_stats_summary() -> dict:

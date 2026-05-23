@@ -73,6 +73,68 @@ def _audit_bcc_email(to_address: str) -> str:
     return ""
 
 
+def _resume_public_url() -> str:
+    return (settings.RESUME_URL or "").strip()
+
+
+def _resume_display_text() -> str:
+    resume_url = _resume_public_url()
+    return resume_url or "Attached when available"
+
+
+def _resume_attachment_filename() -> str:
+    name = (settings.USER_FULL_NAME or "Mayur Koli").strip().replace(" ", "_")
+    return f"{name}_Resume.pdf"
+
+
+def _attachment_mime_type(filename: str, hinted_type: str = "") -> str:
+    hinted_type = (hinted_type or "").split(";", 1)[0].strip()
+    if hinted_type and hinted_type.lower() != "application/octet-stream":
+        return hinted_type
+    return mimetypes.guess_type(filename)[0] or "application/pdf"
+
+
+def _load_resume_attachment() -> tuple[bytes, str, str] | None:
+    filename = _resume_attachment_filename()
+    file_content = None
+    mime_type = "application/pdf"
+
+    if settings.RESUME_URL:
+        try:
+            import httpx
+            with httpx.Client(follow_redirects=True, timeout=30) as client:
+                response = client.get(settings.RESUME_URL)
+                response.raise_for_status()
+                file_content = response.content
+                mime_type = _attachment_mime_type(
+                    filename,
+                    response.headers.get("content-type", ""),
+                )
+        except Exception as e:
+            print(f"[Email] Could not download resume attachment from RESUME_URL: {e}")
+
+    if not file_content and settings.RESUME_BASE64:
+        try:
+            encoded_resume = settings.RESUME_BASE64.strip()
+            if encoded_resume.startswith("data:") and "," in encoded_resume:
+                encoded_resume = encoded_resume.split(",", 1)[1]
+            file_content = base64.b64decode(encoded_resume)
+        except Exception as e:
+            print(f"[Email] Could not decode resume attachment from RESUME_BASE64: {e}")
+
+    resume_path = Path(settings.RESUME_PATH)
+    if not file_content and resume_path.exists() and resume_path.is_file():
+        file_content = resume_path.read_bytes()
+        if resume_path.suffix:
+            filename = f"{(settings.USER_FULL_NAME or 'Mayur Koli').strip().replace(' ', '_')}_Resume{resume_path.suffix}"
+        mime_type = _attachment_mime_type(filename)
+
+    if not file_content:
+        return None
+
+    return file_content, filename, mime_type
+
+
 def _configured_email_provider() -> str:
     if settings.SENDGRID_API_KEY and SENDGRID_AVAILABLE:
         return "SendGrid"
@@ -119,7 +181,10 @@ def _email_config_snapshot() -> dict:
         "sender": _mask_email(sender),
         "recipient_present": bool(recipient),
         "recipient": _mask_email(recipient),
-        "resume_attached": Path(settings.RESUME_PATH).exists(),
+        "resume_url_present": bool(settings.RESUME_URL),
+        "resume_url": settings.RESUME_URL or None,
+        "resume_base64_present": bool(settings.RESUME_BASE64),
+        "local_resume_present": Path(settings.RESUME_PATH).exists(),
     }
 
 
@@ -157,13 +222,13 @@ def _build_message(
 
     # Resume attachment
     if attach_resume:
-        resume_path = Path(settings.RESUME_PATH)
-        if resume_path.exists():
-            with open(resume_path, "rb") as f:
-                part = MIMEBase("application", "octet-stream")
-                part.set_payload(f.read())
+        attachment = _load_resume_attachment()
+        if attachment:
+            file_content, filename, mime_type = attachment
+            maintype, subtype = mime_type.split("/", 1) if "/" in mime_type else ("application", "octet-stream")
+            part = MIMEBase(maintype, subtype)
+            part.set_payload(file_content)
             encoders.encode_base64(part)
-            filename = f"{from_name.replace(' ','_')}_Resume{resume_path.suffix}"
             part.add_header(
                 "Content-Disposition",
                 f'attachment; filename="{filename}"'
@@ -254,13 +319,10 @@ def _send_via_sendgrid(
         
         # Attach resume if requested
         if attach_resume:
-            resume_path = Path(settings.RESUME_PATH)
-            if resume_path.exists():
-                with open(resume_path, "rb") as f:
-                    file_content = f.read()
-                filename = f"{settings.USER_FULL_NAME.replace(' ','_')}_Resume{resume_path.suffix}"
+            attachment_data = _load_resume_attachment()
+            if attachment_data:
+                file_content, filename, mime_type = attachment_data
                 encoded_content = base64.b64encode(file_content).decode("ascii")
-                mime_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
                 attachment = Attachment(
                     FileContent(encoded_content),
                     FileName(filename),
@@ -380,14 +442,14 @@ async def test_email_config_detailed() -> dict:
         "Your job auto-apply platform is configured correctly.\n\n"
         f"Email provider: {provider}\n"
         f"Recipient: {recipient}\n"
-        f"Resume path: {settings.RESUME_PATH}\n\n"
+        f"Resume: {_resume_display_text()}\n\n"
         "You're all set!"
     )
 
     loop = asyncio.get_event_loop()
     success, error = await loop.run_in_executor(
         None,
-        lambda: send_email_sync(recipient, subject, body, False),
+        lambda: send_email_sync(recipient, subject, body, True),
     )
 
     async with AsyncSessionLocal() as session:

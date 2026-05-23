@@ -70,29 +70,34 @@ def _contact_signature(profile: dict) -> str:
     if settings.RESUME_URL:
         lines.append(f"Resume: {settings.RESUME_URL}")
     else:
-        lines.append("Resume: attached")
+        lines.append("Resume: attached if available")
     return "\n".join(lines)
 
 
 def _with_contact_signature(body: str, profile: dict) -> str:
     """Ensure every outreach email has direct contact details and resume access."""
+    body = body.strip()
     signature = _contact_signature(profile)
-    email = settings.USER_EMAIL or profile.get("email") or ""
-    phone = settings.USER_PHONE or profile.get("phone") or ""
-    already_has_contact = (
-        (email and email in body) or
-        (phone and phone in body) or
-        "LinkedIn:" in body or
-        "Resume:" in body
-    )
-    if already_has_contact:
-        return body.strip()
+    signature_lines = signature.splitlines()
+    name = signature_lines[0]
+    missing_lines = [
+        line for line in signature_lines[1:]
+        if line and line not in body
+    ]
+    if not missing_lines and name in body:
+        return body
 
     has_signoff = "\nThanks," in body or "\nTalk soon," in body
     if has_signoff:
-        contact_lines = "\n".join(signature.splitlines()[1:]) or signature
-        return f"{body.strip()}\n{contact_lines}"
-    return f"{body.strip()}\n\nThanks,\n{signature}"
+        lines_to_add = []
+        if name and name not in body[-300:]:
+            lines_to_add.append(name)
+        lines_to_add.extend(missing_lines)
+        contact_lines = "\n".join(lines_to_add)
+        return f"{body}\n{contact_lines}" if contact_lines else body
+
+    signature_block = "\n".join(["Thanks,", name, *missing_lines])
+    return f"{body}\n\n{signature_block}"
 
 
 def _template_cold_email(job: dict, profile: dict, contact_name: str = "", contact_title: str = "") -> dict:
@@ -183,6 +188,7 @@ Total experience: {profile.get('total_experience_years', '?')} years
 LinkedIn: {settings.USER_LINKEDIN or 'not provided'}
 GitHub: {settings.USER_GITHUB or 'not provided'}
 Portfolio: {settings.USER_PORTFOLIO or 'not provided'}
+Resume: {settings.RESUME_URL or 'attached if available'}
 
 TARGET JOB:
 Title: {job.get('title', '')}
@@ -201,7 +207,7 @@ SUBJECT: [subject line here]
 ---
 [email body here]
 
-The email must be 150-220 words. Be direct, specific, and genuinely interesting — not generic."""
+The email must be 150-220 words. Include the resume link in the signature when one is provided. Be direct, specific, and genuinely interesting — not generic."""
 
     response = _model().generate_content(
         prompt,

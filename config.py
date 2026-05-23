@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     GMAIL_ADDRESS: str = ""
     GMAIL_APP_PASSWORD: str = ""
     SENDGRID_API_KEY: str = ""
+    EMAIL_AUDIT_BCC: Optional[str] = None
+    EMAIL_AUDIT_TOKEN: Optional[str] = None
 
     # ── User profile ────────────────────────────────
     USER_FULL_NAME: str = "Your Name"
@@ -86,7 +88,7 @@ class Settings(BaseSettings):
                 return [x.strip() for x in v.split(",") if x.strip()]
         return v
 
-    @field_validator("GMAIL_ADDRESS", "GMAIL_APP_PASSWORD", "SENDGRID_API_KEY", "USER_EMAIL", "RESUME_URL", "JOB_LOCATION", "USER_LINKEDIN", "USER_GITHUB", "USER_PORTFOLIO", mode="before")
+    @field_validator("GMAIL_ADDRESS", "GMAIL_APP_PASSWORD", "SENDGRID_API_KEY", "EMAIL_AUDIT_BCC", "EMAIL_AUDIT_TOKEN", "USER_EMAIL", "RESUME_URL", "JOB_LOCATION", "USER_LINKEDIN", "USER_GITHUB", "USER_PORTFOLIO", mode="before")
     @classmethod
     def strip_quotes(cls, v):
         if isinstance(v, str):

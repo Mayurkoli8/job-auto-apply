@@ -34,6 +34,7 @@ try:
     from sendgrid import SendGridAPIClient
     from sendgrid.helpers.mail import (
         Attachment,
+        Bcc,
         Disposition,
         Email,
         FileContent,
@@ -63,6 +64,13 @@ def _sender_name() -> str:
 def _test_recipient_email() -> str:
     """Prefer the profile email, but allow Gmail-only local testing."""
     return (settings.USER_EMAIL or settings.GMAIL_ADDRESS or "").strip()
+
+
+def _audit_bcc_email(to_address: str) -> str:
+    audit_email = (settings.EMAIL_AUDIT_BCC or "").strip()
+    if audit_email and audit_email.lower() != (to_address or "").lower():
+        return audit_email
+    return ""
 
 
 def _configured_email_provider() -> str:
@@ -240,6 +248,9 @@ def _send_via_sendgrid(
             plain_text_content=body,
         )
         mail.reply_to = ReplyTo(sender_email, _sender_name())
+        audit_bcc = _audit_bcc_email(to_address)
+        if audit_bcc and mail.personalizations:
+            mail.personalizations[0].add_bcc(Bcc(audit_bcc))
         
         # Attach resume if requested
         if attach_resume:

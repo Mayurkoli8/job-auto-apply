@@ -29,7 +29,7 @@ from apscheduler.triggers.cron import CronTrigger
 import pytz
 
 from config import settings
-from database import init_db, get_stats, AsyncSessionLocal, Job, update_job_status
+from database import init_db, get_stats, AsyncSessionLocal, Job, EmailLog, update_job_status
 from resume_parser import parse_and_save_resume, load_profile
 from orchestrator import run_daily_pipeline, run_email_only_pipeline
 from email_sender import test_email_config, test_email_config_detailed
@@ -215,6 +215,44 @@ async def detailed_stats():
     """Detailed stats including timeline and distribution (for visualization)."""
     from visualizer import export_stats_json
     return await export_stats_json()
+
+
+@app.get("/api/email-audit")
+async def email_audit(token: Optional[str] = None, limit: int = 25):
+    """Review stored sent email content. Requires EMAIL_AUDIT_TOKEN."""
+    if not settings.EMAIL_AUDIT_TOKEN:
+        raise HTTPException(
+            403,
+            "Email audit is disabled. Set EMAIL_AUDIT_TOKEN in the environment first.",
+        )
+    if token != settings.EMAIL_AUDIT_TOKEN:
+        raise HTTPException(403, "Invalid email audit token")
+
+    from sqlalchemy import select
+    safe_limit = max(1, min(limit, 100))
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(EmailLog)
+            .order_by(EmailLog.sent_at.desc())
+            .limit(safe_limit)
+        )
+        logs = result.scalars().all()
+        return {
+            "logs": [
+                {
+                    "id": log.id,
+                    "job_id": log.job_id,
+                    "to_address": log.to_address,
+                    "to_name": log.to_name,
+                    "subject": log.subject,
+                    "body": log.body,
+                    "sent_at": log.sent_at.isoformat() if log.sent_at else None,
+                    "success": log.success,
+                    "error": log.error,
+                }
+                for log in logs
+            ]
+        }
 
 
 @app.get("/api/health")

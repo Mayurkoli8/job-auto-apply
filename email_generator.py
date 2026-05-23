@@ -51,6 +51,50 @@ def _links_block() -> str:
     return "\n".join(lines)
 
 
+def _contact_signature(profile: dict) -> str:
+    name = profile.get("name") or settings.USER_FULL_NAME
+    email = settings.USER_EMAIL or profile.get("email") or ""
+    phone = settings.USER_PHONE or profile.get("phone") or ""
+
+    lines = [name]
+    if email:
+        lines.append(f"Email: {email}")
+    if phone:
+        lines.append(f"Phone: {phone}")
+    if settings.USER_LINKEDIN:
+        lines.append(f"LinkedIn: {settings.USER_LINKEDIN}")
+    if settings.USER_GITHUB:
+        lines.append(f"GitHub: {settings.USER_GITHUB}")
+    if settings.USER_PORTFOLIO:
+        lines.append(f"Portfolio: {settings.USER_PORTFOLIO}")
+    if settings.RESUME_URL:
+        lines.append(f"Resume: {settings.RESUME_URL}")
+    else:
+        lines.append("Resume: attached")
+    return "\n".join(lines)
+
+
+def _with_contact_signature(body: str, profile: dict) -> str:
+    """Ensure every outreach email has direct contact details and resume access."""
+    signature = _contact_signature(profile)
+    email = settings.USER_EMAIL or profile.get("email") or ""
+    phone = settings.USER_PHONE or profile.get("phone") or ""
+    already_has_contact = (
+        (email and email in body) or
+        (phone and phone in body) or
+        "LinkedIn:" in body or
+        "Resume:" in body
+    )
+    if already_has_contact:
+        return body.strip()
+
+    has_signoff = "\nThanks," in body or "\nTalk soon," in body
+    if has_signoff:
+        contact_lines = "\n".join(signature.splitlines()[1:]) or signature
+        return f"{body.strip()}\n{contact_lines}"
+    return f"{body.strip()}\n\nThanks,\n{signature}"
+
+
 def _template_cold_email(job: dict, profile: dict, contact_name: str = "", contact_title: str = "") -> dict:
     """Simple template-based email (fallback when Gemini quota is exceeded)."""
     name = profile.get('name', settings.USER_FULL_NAME)
@@ -59,21 +103,19 @@ def _template_cold_email(job: dict, profile: dict, contact_name: str = "", conta
     title = job.get('title', 'position')
     skills = ", ".join((profile.get("skills") or [])[:5])
 
-    subject = f"Interested in {title} at {company}"
+    subject = f"{title} - {name}"
     body = f"""{greeting}
 
-I'm {name}, and I'm interested in the {title} role at {company}. With experience in {skills}, I believe I'd be a great fit for your team.
+I saw the {title} role at {company} and wanted to reach out directly. I'm a Computer Engineering student focused on GenAI and backend systems, with hands-on work across {skills}.
 
-I'd love to chat more about how I can contribute. Feel free to reach out!
+The part that maps well is my recent work building LLM agents, RAG flows, FastAPI services, and automation workflows that connect real business tools. I've attached my resume, and there's also a resume link below in case attachments are filtered.
+
+If this role is still open, I'd be glad to share a few relevant projects.
 
 Thanks,
 {name}"""
-    
-    links = _links_block()
-    if links:
-        body = body.replace("Thanks,", f"{links}\n\nThanks,")
-    
-    return {"subject": subject, "body": body}
+
+    return {"subject": subject, "body": _with_contact_signature(body, profile)}
 
 
 def _template_cover_letter(job: dict, profile: dict) -> str:
@@ -132,6 +174,8 @@ async def _generate_cold_email_gemini(
 
 CANDIDATE:
 Name: {profile.get('name', settings.USER_FULL_NAME)}
+Email: {settings.USER_EMAIL or profile.get('email') or 'not provided'}
+Phone: {settings.USER_PHONE or profile.get('phone') or 'not provided'}
 Top skills: {skills_top}
 Recent experience:
 {exp_summary}
@@ -171,9 +215,9 @@ The email must be 150-220 words. Be direct, specific, and genuinely interesting 
         subject = parts[0].replace("SUBJECT:", "").strip()
         body = parts[1].strip()
 
-    links = _links_block()
-    if links and links.split("\n")[0] not in body:
-        body = body + "\n\n" + links
+    if not subject:
+        subject = f"{job.get('title', 'Role')} - {profile.get('name', settings.USER_FULL_NAME)}"
+    body = _with_contact_signature(body, profile)
 
     return {"subject": subject, "body": body}
 

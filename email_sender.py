@@ -32,7 +32,16 @@ from database import EmailLog, AsyncSessionLocal
 
 try:
     from sendgrid import SendGridAPIClient
-    from sendgrid.helpers.mail import Mail, Attachment, FileContent, FileName, FileType, Disposition
+    from sendgrid.helpers.mail import (
+        Attachment,
+        Disposition,
+        Email,
+        FileContent,
+        FileName,
+        FileType,
+        Mail,
+        ReplyTo,
+    )
     SENDGRID_AVAILABLE = True
 except ImportError:
     SENDGRID_AVAILABLE = False
@@ -45,6 +54,10 @@ GMAIL_SMTP_PORT = 465   # SSL
 def _sendgrid_sender_email() -> str:
     """Return the verified sender address expected by SendGrid."""
     return (settings.USER_EMAIL or settings.GMAIL_ADDRESS or "").strip()
+
+
+def _sender_name() -> str:
+    return (settings.USER_FULL_NAME or "Mayur Koli").strip()
 
 
 def _test_recipient_email() -> str:
@@ -221,11 +234,12 @@ def _send_via_sendgrid(
     
     try:
         mail = Mail(
-            from_email=sender_email,
+            from_email=Email(sender_email, _sender_name()),
             to_emails=to_address,
             subject=subject,
             plain_text_content=body,
         )
+        mail.reply_to = ReplyTo(sender_email, _sender_name())
         
         # Attach resume if requested
         if attach_resume:
@@ -250,7 +264,8 @@ def _send_via_sendgrid(
         if 200 <= response.status_code < 300:
             return True, ""
         else:
-            return False, f"SendGrid returned status {response.status_code}"
+            body = getattr(response, "body", "") or ""
+            return False, f"SendGrid returned status {response.status_code}: {body}"
     except Exception as e:
         return False, repr(e)
 

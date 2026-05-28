@@ -46,6 +46,7 @@ async def process_job_email(job: dict, profile: dict) -> bool:
     )
 
     if not contact or not contact.email:
+        logger.warning(f"No email found for {job['company']}")
         console.print(f"  [yellow]No email found for {job['company']} — contact={contact}[/yellow]")
         return False
 
@@ -150,6 +151,7 @@ async def _run_daily_pipeline(limit: int = None) -> dict:
     limit = limit or settings.DAILY_LIMIT
     today = datetime.utcnow().strftime("%Y-%m-%d")
 
+    logger.info(f"Starting daily pipeline run (limit={limit})")
     console.rule(f"[bold cyan]Job Auto-Apply — {today}[/bold cyan]")
 
     # 1. Load profile

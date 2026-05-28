@@ -258,6 +258,15 @@ async def email_audit(token: Optional[str] = None, limit: int = 25):
         }
 
 
+@app.get("/api/logs")
+async def get_logs(lines: int = 100):
+    """Return the last N lines of the application log."""
+    if not Path(LOG_PATH).exists():
+        return {"logs": "Log file not found."}
+    with open(LOG_PATH, "r") as f:
+        content = f.readlines()
+        return {"logs": "".join(content[-lines:])}
+
 @app.get("/api/health")
 async def health():
     return {
@@ -391,6 +400,7 @@ async def dashboard():
         <div class="tab active" onclick="show('pane-home', this)">Control Center</div>
         <div class="tab" onclick="show('pane-jobs', this)">Live Log</div>
         <div class="tab" onclick="show('pane-resume', this)">Resume Profile</div>
+        <div class="tab" onclick="show('pane-logs', this)">System Logs</div>
       </div>
 
       <div id="pane-home" class="pane">
@@ -507,6 +517,43 @@ if __name__ == "__main__":
         asyncio.run(run_email_only_pipeline())
     elif "--test-email" in args:
         asyncio.run(test_email_config())
+    else:
+        import os
+        port = int(os.environ.get("PORT", 8000))  # Render injects PORT
+        uvicorn.run(
+            "main:app",
+            host="0.0.0.0",
+            port=port,
+            reload=False,
+            log_level="info"
+        )
+asyncio.run(test_email_config())
+    else:
+        import os
+        port = int(os.environ.get("PORT", 8000))  # Render injects PORT
+        uvicorn.run(
+            "main:app",
+            host="0.0.0.0",
+            port=port,
+            reload=False,
+            log_level="info"
+        )
+eline())
+    elif "--email-only" in args:
+        asyncio.run(run_email_only_pipeline())
+    elif "--test-email" in args:
+        asyncio.run(test_email_config())
+    else:
+        import os
+        port = int(os.environ.get("PORT", 8000))  # Render injects PORT
+        uvicorn.run(
+            "main:app",
+            host="0.0.0.0",
+            port=port,
+            reload=False,
+            log_level="info"
+        )
+asyncio.run(test_email_config())
     else:
         import os
         port = int(os.environ.get("PORT", 8000))  # Render injects PORT

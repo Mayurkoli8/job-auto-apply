@@ -26,10 +26,12 @@ from email_finder import find_contact_for_job
 from email_generator import generate_cold_email, generate_cover_letter
 from email_sender import send_email
 from form_filler import fill_application_form
+import logging
 from rich.console import Console
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
 
+logger = logging.getLogger("job-bot")
 console = Console()
 _PIPELINE_LOCK = asyncio.Lock()
 
@@ -167,6 +169,7 @@ async def _run_daily_pipeline(limit: int = None) -> dict:
     # 2. Scrape jobs
     console.print("\n[bold]Scraping jobs...[/bold]")
     new_jobs = await scrape_all_jobs(profile)
+    logger.info(f"Scraped {len(new_jobs)} new jobs from sources.")
     console.print(f"[cyan]{len(new_jobs)} new jobs found[/cyan]")
 
     # Also retry pending jobs that were scraped in earlier runs
@@ -229,6 +232,7 @@ async def _run_daily_pipeline(limit: int = None) -> dict:
                 # PRIMARY: cold email
                 email_success = await process_job_email(job, profile)
                 if email_success:
+                    logger.info(f"Successfully sent email to {job['company']}")
                     console.print(f"  [green]Email sent for {job['company']}[/green]")
                     applied_email += 1
                     progress.advance(task)
@@ -247,6 +251,7 @@ async def _run_daily_pipeline(limit: int = None) -> dict:
                 skipped += 1
 
             except Exception as e:
+                logger.error(f"Failed to process {job['company']}: {str(e)}")
                 console.print(f"  [red]Error on {job['company']}: {e}[/red]")
                 errors += 1
 

@@ -22,9 +22,10 @@ from bs4 import BeautifulSoup
 from fake_useragent import UserAgent
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+import logging
 from config import settings
-from database import get_all_job_ids, get_all_job_keys, job_identity_key, upsert_job
 
+logger = logging.getLogger("job-bot")
 ua = UserAgent()
 
 HEADERS = {
@@ -99,8 +100,8 @@ async def scrape_remoteok(client: httpx.AsyncClient, keywords: List[str]) -> Lis
                              if item.get("epoch") else None,
             })
     except Exception as e:
-        print(f"[RemoteOK] Error: {e}")
-    print(f"[RemoteOK] Found {len(jobs)} jobs")
+        logger.error(f"[RemoteOK] Error: {e}")
+    logger.info(f"[RemoteOK] Found {len(jobs)} jobs")
     return jobs
 
 
@@ -137,8 +138,8 @@ async def scrape_remotive(client: httpx.AsyncClient, keywords: List[str]) -> Lis
                 })
             await asyncio.sleep(1)
     except Exception as e:
-        print(f"[Remotive] Error: {e}")
-    print(f"[Remotive] Found {len(jobs)} jobs")
+        logger.error(f"[Remotive] Error: {e}")
+    logger.info(f"[Remotive] Found {len(jobs)} jobs")
     return jobs
 
 
@@ -185,8 +186,8 @@ async def scrape_weworkremotely(keywords: List[str]) -> List[dict]:
                                  if entry.get("published_parsed") else None,
                 })
     except Exception as e:
-        print(f"[WeWorkRemotely] Error: {e}")
-    print(f"[WeWorkRemotely] Found {len(jobs)} jobs")
+        logger.error(f"[WeWorkRemotely] Error: {e}")
+    logger.info(f"[WeWorkRemotely] Found {len(jobs)} jobs")
     return jobs
 
 
@@ -229,8 +230,8 @@ async def scrape_the_muse(client: httpx.AsyncClient, keywords: List[str]) -> Lis
                 ) if item.get("publication_date") else None,
             })
     except Exception as e:
-        print(f"[TheMuse] Error: {e}")
-    print(f"[TheMuse] Found {len(jobs)} jobs")
+        logger.error(f"[TheMuse] Error: {e}")
+    logger.info(f"[TheMuse] Found {len(jobs)} jobs")
     return jobs
 
 
@@ -273,8 +274,8 @@ async def scrape_adzuna(client: httpx.AsyncClient, keywords: List[str]) -> List[
                 })
             await asyncio.sleep(1)
     except Exception as e:
-        print(f"[Adzuna] Error: {e}")
-    print(f"[Adzuna] Found {len(jobs)} jobs")
+        logger.error(f"[Adzuna] Error: {e}")
+    logger.info(f"[Adzuna] Found {len(jobs)} jobs")
     return jobs
 
 
@@ -326,8 +327,8 @@ async def scrape_indeed(client: httpx.AsyncClient, keywords: List[str]) -> List[
                 })
             await asyncio.sleep(5)  # be polite
     except Exception as e:
-        print(f"[Indeed] Error: {e}")
-    print(f"[Indeed] Found {len(jobs)} jobs")
+        logger.error(f"[Indeed] Error: {e}")
+    logger.info(f"[Indeed] Found {len(jobs)} jobs")
     return jobs
 
 
@@ -405,8 +406,8 @@ async def scrape_linkedin(keywords: List[str]) -> List[dict]:
                 await asyncio.sleep(4)
             await browser.close()
     except Exception as e:
-        print(f"[LinkedIn] Error: {e}")
-    print(f"[LinkedIn] Found {len(jobs)} jobs")
+        logger.error(f"[LinkedIn] Error: {e}")
+    logger.info(f"[LinkedIn] Found {len(jobs)} jobs")
     return jobs
 
 
@@ -445,7 +446,7 @@ async def scrape_all_jobs(profile: dict = None) -> List[dict]:
         settings.JOB_TITLES + settings.JOB_KEYWORDS +
         (profile.get("skills", [])[:10] if profile else [])
     ))
-    print(f"[Scraper] Searching with {len(keywords)} keywords across all sources...")
+    logger.info(f"[Scraper] Searching with {len(keywords)} keywords across all sources...")
 
     async with httpx.AsyncClient(headers=HEADERS, follow_redirects=True) as client:
         results = await asyncio.gather(
@@ -464,7 +465,7 @@ async def scrape_all_jobs(profile: dict = None) -> List[dict]:
         if isinstance(r, list):
             all_jobs.extend(r)
         elif isinstance(r, Exception):
-            print(f"[Scraper] Source error: {r!r}")
+            logger.error(f"[Scraper] Source error: {r!r}")
 
     # Score
     for job in all_jobs:
@@ -479,7 +480,7 @@ async def scrape_all_jobs(profile: dict = None) -> List[dict]:
         'excluded_company': 0,
     }
     if drop_counters['low_score']:
-        print(f"[Scraper] Dropped {drop_counters['low_score']} low-relevance jobs below match score {settings.MIN_MATCH_SCORE}")
+        logger.info(f"[Scraper] Dropped {drop_counters['low_score']} low-relevance jobs below match score {settings.MIN_MATCH_SCORE}")
 
     # Deduplicate and count reasons
     deduped = deduplicate(filtered_jobs, drop_counters=drop_counters)
@@ -504,7 +505,7 @@ async def scrape_all_jobs(profile: dict = None) -> List[dict]:
 
     # Print a concise breakdown
     total_after_filter = len(deduped)
-    print(
+    logger.info(
         f"[Scraper] Total after filter: {total_after_filter} | New discovered: {len(new_jobs)} | "
         f"Saved: {saved} | Already seen: {already_seen} | "
         f"Dropped low_score: {drop_counters.get('low_score',0)} | "

@@ -36,6 +36,22 @@ from email_sender import test_email_config, test_email_config_detailed
 
 import uvicorn
 
+import logging
+from logging.handlers import RotatingFileHandler
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+LOG_PATH = "logs/app.log"
+Path("logs").mkdir(exist_ok=True)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        RotatingFileHandler(LOG_PATH, maxBytes=10*1024*1024, backupCount=5),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger("job-bot")
+
 # ── Scheduler ─────────────────────────────────────────────────────────────────
 
 scheduler = AsyncIOScheduler()
@@ -420,6 +436,14 @@ async def dashboard():
       <div id="pane-resume" class="pane" style="display: none;">
         <div id="profile-data">Loading profile...</div>
       </div>
+
+      <div id="pane-logs" class="pane" style="display: none;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+          <h3>System Logs</h3>
+          <button class="btn btn-secondary btn-small" onclick="loadLogs()">Refresh Logs</button>
+        </div>
+        <pre id="log-content" style="background: #000; padding: 15px; border-radius: 8px; font-size: 12px; color: #fff; overflow-x: auto; white-space: pre-wrap; height: 400px; overflow-y: scroll; border: 1px solid var(--border);"></pre>
+      </div>
     </div>
   </div>
 
@@ -446,6 +470,16 @@ async def dashboard():
       el.classList.add('active');
       if(id === 'pane-jobs') loadJobs();
       if(id === 'pane-resume') loadProfile();
+      if(id === 'pane-logs') loadLogs();
+    }
+
+    async function loadLogs() {
+      const r = await fetch('/api/logs');
+      const d = await r.json();
+      document.getElementById('log-content').textContent = d.logs || 'No logs found.';
+      // scroll to bottom
+      const el = document.getElementById('log-content');
+      el.scrollTop = el.scrollHeight;
     }
 
     async function loadAll() {
@@ -517,43 +551,6 @@ if __name__ == "__main__":
         asyncio.run(run_email_only_pipeline())
     elif "--test-email" in args:
         asyncio.run(test_email_config())
-    else:
-        import os
-        port = int(os.environ.get("PORT", 8000))  # Render injects PORT
-        uvicorn.run(
-            "main:app",
-            host="0.0.0.0",
-            port=port,
-            reload=False,
-            log_level="info"
-        )
-asyncio.run(test_email_config())
-    else:
-        import os
-        port = int(os.environ.get("PORT", 8000))  # Render injects PORT
-        uvicorn.run(
-            "main:app",
-            host="0.0.0.0",
-            port=port,
-            reload=False,
-            log_level="info"
-        )
-eline())
-    elif "--email-only" in args:
-        asyncio.run(run_email_only_pipeline())
-    elif "--test-email" in args:
-        asyncio.run(test_email_config())
-    else:
-        import os
-        port = int(os.environ.get("PORT", 8000))  # Render injects PORT
-        uvicorn.run(
-            "main:app",
-            host="0.0.0.0",
-            port=port,
-            reload=False,
-            log_level="info"
-        )
-asyncio.run(test_email_config())
     else:
         import os
         port = int(os.environ.get("PORT", 8000))  # Render injects PORT

@@ -1,17 +1,10 @@
 """
 orchestrator.py — Daily job application pipeline.
-
-Flow:
-  1. Load resume profile
-  2. Scrape new jobs
-  3. For each job (up to DAILY_LIMIT):
-     a. Try to find HR email → cold email outreach  (PRIMARY)
-     b. If job has direct apply URL → form fill     (SECONDARY)
-  4. Log everything
 """
 from __future__ import annotations
 import asyncio
 import random
+import logging
 from datetime import datetime
 from typing import List
 
@@ -26,7 +19,6 @@ from email_finder import find_contact_for_job
 from email_generator import generate_cold_email, generate_cover_letter
 from email_sender import send_email
 from form_filler import fill_application_form
-import logging
 from rich.console import Console
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
@@ -37,10 +29,7 @@ _PIPELINE_LOCK = asyncio.Lock()
 
 
 async def process_job_email(job: dict, profile: dict) -> bool:
-    """
-    Try to cold-email an HR contact for this job.
-    Returns True on success.
-    """
+    """Try to cold-email an HR contact for this job."""
     contact = await find_contact_for_job(
         company=job["company"],
         job_url=job.get("url", ""),
@@ -49,10 +38,8 @@ async def process_job_email(job: dict, profile: dict) -> bool:
 
     if not contact or not contact.email:
         logger.warning(f"No email found for {job['company']}")
-        console.print(f"  [yellow]No email found for {job['company']} — contact={contact}[/yellow]")
         return False
 
-    # Generate personalized email
     email_content = await generate_cold_email(
         job=job,
         profile=profile,
@@ -60,14 +47,10 @@ async def process_job_email(job: dict, profile: dict) -> bool:
         contact_title=contact.title,
     )
 
-    subject = email_content["subject"]
-    body = email_content["body"]
-
-    # Send it
     success = await send_email(
         to_address=contact.email,
-        subject=subject,
-        body=body,
+        subject=email_content["subject"],
+        body=email_content["body"],
         job_id=job["id"],
         to_name=contact.name,
         attach_resume=True,
@@ -78,35 +61,25 @@ async def process_job_email(job: dict, profile: dict) -> bool:
             job_id=job["id"],
             method="cold_email",
             contact_email=contact.email,
-            email_subject=subject,
-            email_body=body,
+            email_subject=email_content["subject"],
+            email_body=email_content["body"],
         )
-
     return success
 
 
 async def process_job_form(job: dict, profile: dict) -> bool:
-    """
-    Fill out the job application form on the job site.
-    Returns True on success.
-    """
-    # Generate cover letter for form applications
+    """Fill out the job application form."""
     cover_letter = await generate_cover_letter(job=job, profile=profile)
-
     success = await fill_application_form(
         job=job,
         profile=profile,
         cover_letter=cover_letter,
         headless=True,
     )
-
     if success:
         await mark_applied(job_id=job["id"], method="form_fill")
-
     return success
 
-
-# ── ATS / apply page detection ────────────────────────────────────────────────
 
 APPLY_URL_PATTERNS = [
     "greenhouse.io", "lever.co", "workday.com", "ashbyhq.com",
@@ -139,12 +112,10 @@ async def _apply_skip_reason(job: dict) -> str:
     return await get_apply_skip_reason(job, settings.MIN_MATCH_SCORE)
 
 
-# ── Main daily pipeline ───────────────────────────────────────────────────────
-
 async def run_daily_pipeline(limit: int = None) -> dict:
     if _PIPELINE_LOCK.locked():
-        console.print("[yellow]Apply pipeline is already running; skipping duplicate trigger.[/yellow]")
-        return {"skipped": 0, "errors": 0, "total_applied": 0, "message": "pipeline already running"}
+        logger.warning("Pipeline is already running. Skipping trigger.")
+        return {"message": "already running"}
     async with _PIPELINE_LOCK:
         return await _run_daily_pipeline(limit)
 
@@ -152,199 +123,126 @@ async def run_daily_pipeline(limit: int = None) -> dict:
 async def _run_daily_pipeline(limit: int = None) -> dict:
     limit = limit or settings.DAILY_LIMIT
     today = datetime.utcnow().strftime("%Y-%m-%d")
-
     logger.info(f"Starting daily pipeline run (limit={limit})")
-    console.rule(f"[bold cyan]Job Auto-Apply — {today}[/bold cyan]")
+    
+    try:
+        # 1. Load profile
+        profile = await load_profile()
+        if not profile:
+            logger.error("No resume profile found. Please upload a resume first.")
+            return {"error": "no_profile"}
+        logger.info(f"Loaded profile: {profile.get('name')}")
 
-    # 1. Load profile
-    profile = await load_profile()
-    if not profile:
-        console.print("[red]No resume profile found. Parse your resume first.[/red]")
-        return {}
+        # 2. Scrape jobs
+        logger.info("Scraping for new jobs...")
+        new_jobs = await scrape_all_jobs(profile)
+        pending_jobs = await get_pending_jobs(limit)
+        logger.info(f"Discovery complete. New: {len(new_jobs)} | Pending Retry: {len(pending_jobs)}")
 
-    console.print(f"[green]Profile:[/green] {profile.get('name')} | "
-                  f"{profile.get('total_experience_years', '?')} yrs | "
-                  f"{len(profile.get('skills', []))} skills")
+        # 3. Apply
+        applied_email = 0
+        applied_form = 0
+        skipped = 0
+        errors = 0
 
-    # 2. Scrape jobs
-    console.print("\n[bold]Scraping jobs...[/bold]")
-    new_jobs = await scrape_all_jobs(profile)
-    logger.info(f"Scraped {len(new_jobs)} new jobs from sources.")
-    console.print(f"[cyan]{len(new_jobs)} new jobs found[/cyan]")
+        seen_ids = {job["id"] for job in new_jobs}
+        all_candidates = list(new_jobs)
+        for job in pending_jobs:
+            if job.id not in seen_ids:
+                all_candidates.append(_job_row_to_dict(job))
+        
+        all_candidates.sort(key=lambda j: j["match_score"], reverse=True)
+        jobs_to_apply = all_candidates[:limit]
+        
+        if not jobs_to_apply:
+            logger.info("No relevant jobs found to apply to.")
+            return {"applied": 0}
 
-    # Also retry pending jobs that were scraped in earlier runs
-    pending_jobs = await get_pending_jobs(limit)
-    if pending_jobs:
-        console.print(f"[cyan]{len(pending_jobs)} pending jobs available for retry[/cyan]")
+        logger.info(f"Beginning application process for {len(jobs_to_apply)} jobs.")
 
-    if not new_jobs and not pending_jobs:
-        console.print("[yellow]No jobs available to apply to.[/yellow]")
-        return {"applied": 0, "scraped": len(new_jobs)}
-
-    # 3. Apply
-    applied_email = 0
-    applied_form = 0
-    skipped = 0
-    errors = 0
-
-    # Prioritise by match score; avoid duplicate work for the same job
-    seen_ids = {job["id"] for job in new_jobs}
-    all_candidates = list(new_jobs)
-    for job in pending_jobs:
-        if job.id not in seen_ids:
-            all_candidates.append(_job_row_to_dict(job))
-    all_candidates.sort(key=lambda j: j["match_score"], reverse=True)
-    jobs_to_apply = all_candidates[:limit]
-
-    console.print(f"[Orchestrator] Applying to {len(jobs_to_apply)} jobs (new: {len(new_jobs)}, pending retry: {len(pending_jobs)})")
-    for i, job in enumerate(jobs_to_apply, start=1):
-        console.print(f"[Orchestrator] Job #{i}: {job['company']} — {job['title']} (score={job['match_score']:.3f})")
-
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-        console=console,
-    ) as progress:
-        task = progress.add_task("Applying...", total=len(jobs_to_apply))
-
-        for job in jobs_to_apply:
-            progress.update(
-                task,
-                description=f"[cyan]{job['company'][:30]}[/cyan] — {job['title'][:40]}"
-            )
-
-            # Rate limiting
-            delay = random.uniform(
-                settings.MIN_DELAY_SECONDS * 2,
-                settings.MAX_DELAY_SECONDS * 3
-            )
-
+        for i, job in enumerate(jobs_to_apply, start=1):
+            logger.info(f"Processing #{i}: {job['company']} - {job['title']} (Score: {job['match_score']:.2f})")
+            
             try:
                 skip_reason = await _apply_skip_reason(job)
                 if skip_reason:
-                    console.print(f"  [yellow]Skipped {job['company']} - {skip_reason}[/yellow]")
+                    logger.info(f"Skipping {job['company']}: {skip_reason}")
                     skipped += 1
-                    progress.advance(task)
                     continue
 
                 # PRIMARY: cold email
-                email_success = await process_job_email(job, profile)
-                if email_success:
-                    logger.info(f"Successfully sent email to {job['company']}")
-                    console.print(f"  [green]Email sent for {job['company']}[/green]")
+                if await process_job_email(job, profile):
+                    logger.info(f"SUCCESS: Email sent to {job['company']}")
                     applied_email += 1
-                    progress.advance(task)
-                    await asyncio.sleep(delay)
+                    await asyncio.sleep(random.uniform(settings.MIN_DELAY_SECONDS, settings.MAX_DELAY_SECONDS))
                     continue
 
-                # SECONDARY: form fill (only if it has a known ATS URL)
+                # SECONDARY: form fill
                 if has_direct_apply_url(job):
-                    form_success = await process_job_form(job, profile)
-                    if form_success:
+                    if await process_job_form(job, profile):
+                        logger.info(f"SUCCESS: Form filled for {job['company']}")
                         applied_form += 1
-                        progress.advance(task)
-                        await asyncio.sleep(delay)
+                        await asyncio.sleep(random.uniform(settings.MIN_DELAY_SECONDS, settings.MAX_DELAY_SECONDS))
                         continue
 
+                logger.warning(f"SKIPPED: No outreach method found for {job['company']}")
+                await mark_applied(job['id'], 'skipped', status='skipped')
                 skipped += 1
 
             except Exception as e:
-                logger.error(f"Failed to process {job['company']}: {str(e)}")
-                console.print(f"  [red]Error on {job['company']}: {e}[/red]")
+                logger.error(f"ERROR: Failed {job['company']}: {str(e)}")
                 errors += 1
+                await mark_applied(job['id'], 'failed', status='failed')
 
-            progress.advance(task)
-            await asyncio.sleep(delay)
+        # 4. Update daily stats
+        async with AsyncSessionLocal() as session:
+            from sqlalchemy import select
+            existing = await session.get(DailyStats, today)
+            if existing:
+                existing.emails_sent += applied_email
+                existing.forms_filled += applied_form
+                existing.jobs_scraped += len(new_jobs)
+                existing.errors += errors
+            else:
+                session.add(DailyStats(date=today, jobs_scraped=len(new_jobs), emails_sent=applied_email, forms_filled=applied_form, errors=errors))
+            await session.commit()
 
-    # 4. Update daily stats
-    async with AsyncSessionLocal() as session:
-        from sqlalchemy import select
-        existing = await session.get(DailyStats, today)
-        if existing:
-            existing.emails_sent += applied_email
-            existing.forms_filled += applied_form
-            existing.jobs_scraped += len(new_jobs)
-            existing.errors += errors
-        else:
-            session.add(DailyStats(
-                date=today,
-                jobs_scraped=len(new_jobs),
-                emails_sent=applied_email,
-                forms_filled=applied_form,
-                errors=errors,
-            ))
-        await session.commit()
+        logger.info(f"Pipeline finished. Total Applied: {applied_email + applied_form}")
+        return {"applied": applied_email + applied_form}
 
-    total_applied = applied_email + applied_form
-    result = {
-        "date": today,
-        "scraped": len(new_jobs),
-        "applied_email": applied_email,
-        "applied_form": applied_form,
-        "total_applied": total_applied,
-        "skipped": skipped,
-        "errors": errors,
-    }
-
-    # Summary table
-    table = Table(title="Daily Summary", show_header=True, header_style="bold magenta")
-    table.add_column("Metric", style="cyan")
-    table.add_column("Count", style="green", justify="right")
-    table.add_row("Jobs scraped", str(len(new_jobs)))
-    table.add_row("Cold emails sent", str(applied_email))
-    table.add_row("Forms filled", str(applied_form))
-    table.add_row("Total applied", str(total_applied))
-    table.add_row("Skipped", str(skipped))
-    table.add_row("Errors", str(errors))
-    console.print(table)
-
-    return result
-
+    except Exception as e:
+        logger.error(f"FATAL: Pipeline crash: {str(e)}")
+        return {"error": str(e)}
 
 async def run_email_only_pipeline(limit: int = None) -> dict:
-    if _PIPELINE_LOCK.locked():
-        console.print("[yellow]Apply pipeline is already running; skipping duplicate trigger.[/yellow]")
-        return {"applied": 0, "scraped": 0, "skipped": 0, "errors": 0, "message": "pipeline already running"}
+    if _PIPELINE_LOCK.locked(): return {"message": "already running"}
     async with _PIPELINE_LOCK:
         return await _run_email_only_pipeline(limit)
 
-
 async def _run_email_only_pipeline(limit: int = None) -> dict:
-    """Run only the cold email pipeline (faster, more reliable)."""
     limit = limit or settings.DAILY_LIMIT
     profile = await load_profile()
-    if not profile:
-        return {}
+    if not profile: return {"error": "no_profile"}
+    logger.info("Starting Email-Only Run...")
     new_jobs = await scrape_all_jobs(profile)
     pending_jobs = await get_pending_jobs(limit)
     all_jobs = list(new_jobs)
     seen_ids = {job['id'] for job in new_jobs}
     for job in pending_jobs:
-        if job.id not in seen_ids:
-            all_jobs.append(_job_row_to_dict(job))
+        if job.id not in seen_ids: all_jobs.append(_job_row_to_dict(job))
     all_jobs.sort(key=lambda j: j['match_score'], reverse=True)
+    
     applied = 0
-    skipped = 0
-    errors = 0
     for job in all_jobs[:limit]:
-        skip_reason = await _apply_skip_reason(job)
-        if skip_reason:
-            console.print(f"  [yellow]Skipped {job['company']} - {skip_reason}[/yellow]")
-            skipped += 1
-            continue
+        if await _apply_skip_reason(job): continue
         try:
-            success = await process_job_email(job, profile)
-            if success:
+            if await process_job_email(job, profile):
                 applied += 1
+                logger.info(f"Email sent: {job['company']}")
             else:
                 await mark_applied(job['id'], 'skipped', status='skipped')
-                skipped += 1
         except Exception as e:
-            console.print(f"  [red]Error on {job['company']}: {e}[/red]")
-            errors += 1
+            logger.error(f"Email failed for {job['company']}: {e}")
             await mark_applied(job['id'], 'failed', status='failed')
-        delay = random.uniform(60, 120)  # 1-2 min between emails
-        await asyncio.sleep(delay)
-    return {"applied": applied, "scraped": len(new_jobs), "skipped": skipped, "errors": errors}
+        await asyncio.sleep(random.uniform(30, 60))
+    return {"applied": applied}

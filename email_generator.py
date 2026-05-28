@@ -136,7 +136,18 @@ async def generate_cold_email(
     contact_name: str = "",
     contact_title: str = "",
 ) -> dict:
-    """Returns {"subject": str, "body": str}. Uses the default template only."""
+    """Returns {"subject": str, "body": str}. Uses Gemini, falls back to default template."""
+    if not settings.GEMINI_API_KEY:
+        return _template_cold_email(job, profile, contact_name, contact_title)
+        
+    try:
+        res = await _generate_cold_email_gemini(job, profile, contact_name, contact_title)
+        if res and res.get("body") and len(res["body"].strip()) > 50:
+            return res
+        print(f"[Email Gen] Gemini cold email returned empty or too short content, falling back.")
+    except Exception as e:
+        print(f"[Email Gen] Gemini cold email failed, falling back to template: {e}")
+    
     return _template_cold_email(job, profile, contact_name, contact_title)
 
 
@@ -259,14 +270,23 @@ Output ONLY the cover letter text."""
 async def generate_follow_up_email(
     job: dict, profile: dict, days_since: int = 7
 ) -> dict:
-    """Short follow-up using the default template only."""
+    """Short follow-up using Gemini with fallback."""
+    if not settings.GEMINI_API_KEY:
+        return _template_follow_up_email(job, profile, days_since)
+        
+    try:
+        return await _generate_follow_up_email_gemini(job, profile, days_since)
+    except Exception as e:
+        print(f"[Email Gen] Gemini follow up failed, falling back to template: {e}")
+        return _template_follow_up_email(job, profile, days_since)
+
+def _template_follow_up_email(job: dict, profile: dict, days_since: int) -> dict:
     name = profile.get('name', settings.USER_FULL_NAME)
     title = (job.get('title') or 'the role').strip()
     return {
         "subject": f"Following up on {title}",
-        "body": f"Hi there,\n\nJust following up on my recent application for the {title} role. I'm still interested and happy to share relevant projects or any extra details that would help.\n\nThanks,\n{name}"
+        "body": f"Hi there,\n\nJust following up on my recent application for the {title} role {days_since} days ago. I'm still interested and happy to share relevant projects or any extra details that would help.\n\nThanks,\n{name}"
     }
-
 
 async def _generate_follow_up_email_gemini(
     job: dict, profile: dict, days_since: int = 7

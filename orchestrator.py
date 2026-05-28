@@ -331,9 +331,13 @@ async def _run_email_only_pipeline(limit: int = None) -> dict:
             success = await process_job_email(job, profile)
             if success:
                 applied += 1
+            else:
+                await mark_applied(job['id'], 'skipped', status='skipped')
+                skipped += 1
         except Exception as e:
             console.print(f"  [red]Error on {job['company']}: {e}[/red]")
             errors += 1
+            await mark_applied(job['id'], 'failed', status='failed')
         delay = random.uniform(60, 120)  # 1-2 min between emails
         await asyncio.sleep(delay)
     return {"applied": applied, "scraped": len(new_jobs), "skipped": skipped, "errors": errors}

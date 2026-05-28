@@ -228,14 +228,14 @@ async def get_apply_skip_reason(job_data: dict, min_match_score: float | None = 
 
 
 async def mark_applied(job_id: str, method: str, contact_email: str = None,
-                       email_subject: str = None, email_body: str = None):
+                       email_subject: str = None, email_body: str = None, status: str = "applied"):
     async with AsyncSessionLocal() as s:
         job = await s.get(Job, job_id)
         if job:
             job.applied       = True
             job.apply_method  = method
             job.applied_at    = datetime.utcnow()
-            job.status        = "applied"
+            job.status        = status
             if contact_email:  job.contact_email  = contact_email
             if email_subject:  job.email_subject  = email_subject
             if email_body:     job.email_body     = email_body

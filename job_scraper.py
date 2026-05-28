@@ -41,13 +41,26 @@ def make_job_id(source: str, uid: str) -> str:
 
 
 def score_job(job: dict, profile: dict) -> float:
-    """Simple keyword-based match score 0-1."""
+    """Keyword-based match score prioritizing job titles and core keywords."""
     if not profile:
         return 0.5
     skills = {s.lower() for s in profile.get("skills", [])}
-    desc = (job.get("description", "") + " " + job.get("title", "")).lower()
-    hits = sum(1 for s in skills if s in desc)
-    return min(hits / max(len(skills), 1), 1.0)
+    title = job.get("title", "").lower()
+    desc = (job.get("description", "") + " " + title).lower()
+    
+    # Calculate skill match score (max 0.4)
+    skill_hits = sum(1 for s in skills if s in desc)
+    skill_score = min(skill_hits / max(len(skills), 1), 1.0) * 0.4
+    
+    # Calculate title match score (max 0.4)
+    title_hits = sum(1 for t in settings.JOB_TITLES if t.lower() in title)
+    title_score = 0.4 if title_hits > 0 else 0.0
+    
+    # Bonus for main keywords (max 0.2)
+    kw_hits = sum(1 for kw in settings.JOB_KEYWORDS if kw.lower() in desc)
+    kw_bonus = min(kw_hits * 0.05, 0.2)
+    
+    return min(skill_score + title_score + kw_bonus, 1.0)
 
 
 # ── 1. RemoteOK ─────────────────────────────────────────────────────────────

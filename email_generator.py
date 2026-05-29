@@ -1,48 +1,8 @@
 """
-email_generator.py - Default cold email and cover letter templates.
-
-Cold outreach intentionally avoids AI calls and company-specific claims so it
-stays consistent when model credits are unavailable.
+email_generator.py - Professional default cold email and cover letter templates.
 """
 from __future__ import annotations
 from config import settings
-
-
-ANTI_AI_SYSTEM_INSTRUCTION = """You write authentic, human-sounding job application emails and cover letters.
-
-RULES — follow every one without exception:
-1. Write like a real person emailing a colleague, not a robot filing paperwork.
-2. BANNED PHRASES — never use: "I hope this email finds you well", "I am writing to express my interest", "leverage", "utilize", "synergy", "passionate about", "team player", "hard worker", "go-getter", "proven track record", "results-driven", "I would be a great fit", "I am excited about the opportunity", "please find attached", "do not hesitate to contact me", "looking forward to hearing from you", "Best Regards", "Sincerely".
-3. SENTENCE VARIETY: Mix very short sentences (4-6 words) with longer ones (20-30 words). Never write three consecutive sentences of similar length.
-4. USE CONTRACTIONS everywhere natural: I'm, I've, I'd, it's, don't, can't, won't, isn't, they're.
-5. START some sentences with: And, But, So, Actually, Honestly, That said.
-6. Include ONE specific detail about the company — something real about their product, recent work, or mission.
-7. Reference ONE concrete achievement from the resume with a real number.
-8. Cold emails: max 3 paragraphs, 150-220 words. Cover letters: max 4 paragraphs, 300-380 words.
-9. Sign-off: "Thanks," or "Talk soon," — never "Sincerely" or "Best Regards".
-10. Output ONLY the requested content — no preamble, no explanation, no markdown."""
-
-
-def _model():
-    import google.generativeai as genai
-    globals()["genai"] = genai
-    genai.configure(api_key=settings.GEMINI_API_KEY)
-    return genai.GenerativeModel(
-        model_name=settings.GEMINI_MODEL,
-        system_instruction=ANTI_AI_SYSTEM_INSTRUCTION,
-    )
-
-
-def _links_block() -> str:
-    lines = []
-    if settings.USER_LINKEDIN:
-        lines.append(f"LinkedIn: {settings.USER_LINKEDIN}")
-    if settings.USER_GITHUB:
-        lines.append(f"GitHub: {settings.USER_GITHUB}")
-    if settings.USER_PORTFOLIO:
-        lines.append(f"Portfolio: {settings.USER_PORTFOLIO}")
-    return "\n".join(lines)
-
 
 def _contact_signature(profile: dict) -> str:
     name = profile.get("name") or settings.USER_FULL_NAME
@@ -50,273 +10,69 @@ def _contact_signature(profile: dict) -> str:
     phone = settings.USER_PHONE or profile.get("phone") or ""
 
     lines = [name]
-    if email:
-        lines.append(f"Email: {email}")
-    if phone:
-        lines.append(f"Phone: {phone}")
-    if settings.USER_LINKEDIN:
-        lines.append(f"LinkedIn: {settings.USER_LINKEDIN}")
-    if settings.USER_GITHUB:
-        lines.append(f"GitHub: {settings.USER_GITHUB}")
-    if settings.USER_PORTFOLIO:
-        lines.append(f"Portfolio: {settings.USER_PORTFOLIO}")
-    if settings.RESUME_URL:
-        lines.append(f"Resume: {settings.RESUME_URL}")
-    else:
-        lines.append("Resume: attached if available")
+    if email: lines.append(f"Email: {email}")
+    if phone: lines.append(f"Phone: {phone}")
+    if settings.USER_LINKEDIN: lines.append(f"LinkedIn: {settings.USER_LINKEDIN}")
+    if settings.USER_GITHUB: lines.append(f"GitHub: {settings.USER_GITHUB}")
+    if settings.USER_PORTFOLIO: lines.append(f"Portfolio: {settings.USER_PORTFOLIO}")
+    if settings.RESUME_URL: lines.append(f"Resume: {settings.RESUME_URL}")
+    else: lines.append("Resume: attached")
     return "\n".join(lines)
 
-
-def _with_contact_signature(body: str, profile: dict) -> str:
-    """Ensure every outreach email has direct contact details and resume access."""
-    body = body.strip()
-    signature = _contact_signature(profile)
-    signature_lines = signature.splitlines()
-    name = signature_lines[0]
-    missing_lines = [
-        line for line in signature_lines[1:]
-        if line and line not in body
-    ]
-    if not missing_lines and name in body:
-        return body
-
-    has_signoff = "\nThanks," in body or "\nTalk soon," in body
-    if has_signoff:
-        lines_to_add = []
-        if name and name not in body[-300:]:
-            lines_to_add.append(name)
-        lines_to_add.extend(missing_lines)
-        contact_lines = "\n".join(lines_to_add)
-        return f"{body}\n{contact_lines}" if contact_lines else body
-
-    signature_block = "\n".join(["Thanks,", name, *missing_lines])
-    return f"{body}\n\n{signature_block}"
-
-
-def _template_cold_email(job: dict, profile: dict, contact_name: str = "", contact_title: str = "") -> dict:
-    """Default cold email. Only the role title changes."""
+def _template_cold_email(job: dict, profile: dict) -> dict:
+    """Robust, professional default template that works for every company."""
     name = profile.get('name', settings.USER_FULL_NAME)
     title = (job.get('title') or 'the role').strip()
+    company = job.get('company', 'your company')
 
-    subject = f"{title} - {name.upper()}"
+    subject = f"AI Engineer Application - {name} ({title})"
     body = f"""Hi there,
 
-I saw the {title} role and wanted to reach out directly. I'm a Computer Engineering student with hands-on experience building backend services, automation workflows, and AI-assisted tools.
+I recently saw the {title} opening at {company} and wanted to reach out directly.
 
-My recent work includes FastAPI services, LLM/RAG workflows, database-backed applications, and integrations that connect real business tools. I'm comfortable learning quickly, shipping practical features, and working across backend, automation, and applied AI tasks.
+I'm a Computer Engineering student with a strong background in AI, Backend services, and automation. My recent projects include building FastAPI services, implementing LLM/RAG workflows, and creating automated data pipelines. I focus on shipping practical, production-ready code that solves real business problems.
 
-I've attached my resume and included my contact links below. If the role is still open, I'd be glad to share relevant projects and discuss where I could contribute.
+I believe my technical skills and proactive approach to building AI-assisted tools would be a great addition to the {company} team.
 
-Thanks,
-{name}"""
-
-    return {"subject": subject, "body": _with_contact_signature(body, profile)}
-
-
-def _template_cover_letter(job: dict, profile: dict) -> str:
-    """Default cover letter. Avoids AI calls and company-specific claims."""
-    name = profile.get('name', settings.USER_FULL_NAME)
-    title = (job.get('title') or 'the role').strip()
-    
-    return f"""Dear Hiring Team,
-
-I'm applying for the {title} role. I'm a Computer Engineering student with hands-on experience building backend services, automation workflows, and AI-assisted tools.
-
-My recent work includes FastAPI services, LLM/RAG workflows, database-backed applications, and integrations that connect real business tools. I focus on practical implementation, clear problem solving, and building systems that are useful beyond a demo.
-
-I've attached my resume and would be glad to share relevant projects if the role is still open.
+I've attached my resume and included my portfolio links below. I'd love to share more about my relevant projects and discuss how I can contribute to your goals.
 
 Thanks,
-{name}"""
+{name}
 
-
-async def generate_cold_email(
-    job: dict,
-    profile: dict,
-    contact_name: str = "",
-    contact_title: str = "",
-) -> dict:
-    """Returns {"subject": str, "body": str}. Uses Gemini, falls back to default template."""
-    if not settings.GEMINI_API_KEY:
-        return _template_cold_email(job, profile, contact_name, contact_title)
-        
-    try:
-        res = await _generate_cold_email_gemini(job, profile, contact_name, contact_title)
-        if res and res.get("body") and len(res["body"].strip()) > 50:
-            return res
-        print(f"[Email Gen] Gemini cold email returned empty or too short content, falling back.")
-    except Exception as e:
-        print(f"[Email Gen] Gemini cold email failed, falling back to template: {e}")
-    
-    return _template_cold_email(job, profile, contact_name, contact_title)
-
-
-async def _generate_cold_email_gemini(
-    job: dict,
-    profile: dict,
-    contact_name: str = "",
-    contact_title: str = "",
-) -> dict:
-    """Gemini-powered cold email generation."""
-    skills_top = ", ".join((profile.get("skills") or [])[:8])
-    exp_summary = ""
-    for exp in (profile.get("experience") or [])[:2]:
-        bullets = (exp.get("bullets") or [])[:2]
-        exp_summary += f"- {exp.get('title')} at {exp.get('company')}: {'; '.join(bullets)}\n"
-
-    greeting = f"Hi {contact_name.split()[0]}," if contact_name else "Hi there,"
-
-    prompt = f"""Write a cold outreach email from a job seeker to a recruiter/hiring manager.
-
-CANDIDATE:
-Name: {profile.get('name', settings.USER_FULL_NAME)}
-Email: {settings.USER_EMAIL or profile.get('email') or 'not provided'}
-Phone: {settings.USER_PHONE or profile.get('phone') or 'not provided'}
-Top skills: {skills_top}
-Recent experience:
-{exp_summary}
-Total experience: {profile.get('total_experience_years', '?')} years
-LinkedIn: {settings.USER_LINKEDIN or 'not provided'}
-GitHub: {settings.USER_GITHUB or 'not provided'}
-Portfolio: {settings.USER_PORTFOLIO or 'not provided'}
-Resume: {settings.RESUME_URL or 'attached if available'}
-
-TARGET JOB:
-Title: {job.get('title', '')}
-Company: {job.get('company', '')}
-Location: {job.get('location', '')}
-Job snippet: {(job.get('description') or '')[:500]}
-
-CONTACT:
-Name: {contact_name or 'the hiring team'}
-Title: {contact_title or 'recruiter'}
-
-GREETING TO USE: {greeting}
-
-Format your output as:
-SUBJECT: [subject line here]
----
-[email body here]
-
-The email must be 150-220 words. Include the resume link in the signature when one is provided. Be direct, specific, and genuinely interesting — not generic."""
-
-    response = _model().generate_content(
-        prompt,
-        generation_config=genai.GenerationConfig(temperature=0.85, max_output_tokens=600),
-    )
-    raw = response.text.strip()
-
-    subject, body = "", raw
-    if "SUBJECT:" in raw and "---" in raw:
-        parts = raw.split("---", 1)
-        subject = parts[0].replace("SUBJECT:", "").strip()
-        body = parts[1].strip()
-
-    if not subject:
-        subject = f"{job.get('title', 'Role')} - {profile.get('name', settings.USER_FULL_NAME)}"
-    body = _with_contact_signature(body, profile)
+{_contact_signature(profile)}"""
 
     return {"subject": subject, "body": body}
 
+def _template_cover_letter(job: dict, profile: dict) -> str:
+    name = profile.get('name', settings.USER_FULL_NAME)
+    title = (job.get('title') or 'the role').strip()
+    company = job.get('company', 'your company')
+    
+    return f"""Dear Hiring Team at {company},
+
+I'm writing to express my interest in the {title} position. As a Computer Engineering student focusing on AI and Backend engineering, I have developed a deep understanding of building scalable services and integrating modern AI technologies.
+
+My hands-on experience includes developing FastAPI applications, fine-tuning LLM implementations, and optimizing RAG workflows for efficient data retrieval. I thrive in environments where I can learn quickly and apply new technologies to shipping practical features.
+
+I am particularly impressed with {company}'s work in this space and am eager to contribute to your continued success. I've attached my resume for your review and am available for a discussion at your convenience.
+
+Thanks,
+{name}
+
+{_contact_signature(profile)}"""
+
+async def generate_cold_email(job: dict, profile: dict, **kwargs) -> dict:
+    """Returns {"subject": str, "body": str}. Uses the professional default template."""
+    return _template_cold_email(job, profile)
 
 async def generate_cover_letter(job: dict, profile: dict) -> str:
-    """Generate a cover letter using the default template only."""
+    """Generate a professional cover letter using the default template."""
     return _template_cover_letter(job, profile)
 
-
-async def _generate_cover_letter_gemini(job: dict, profile: dict) -> str:
-    """Gemini-powered cover letter generation."""
-    skills_top = ", ".join((profile.get("skills") or [])[:10])
-    exp_detail = ""
-    for e in (profile.get("experience") or [])[:3]:
-        b = (e.get("bullets") or [])[:3]
-        exp_detail += f"\n{e.get('title')} @ {e.get('company')} ({e.get('duration','')}):\n"
-        exp_detail += "\n".join(f"  - {b_}" for b_ in b)
-
-    edu = (profile.get("education") or [{}])[0]
-    edu_str = f"{edu.get('degree','')} from {edu.get('school','')}" if edu else ""
-
-    prompt = f"""Write a cover letter for this job application.
-
-CANDIDATE:
-Name: {profile.get('name', settings.USER_FULL_NAME)}
-Email: {settings.USER_EMAIL}
-Skills: {skills_top}
-Experience ({profile.get('total_experience_years','?')} yrs):{exp_detail}
-Education: {edu_str}
-
-JOB:
-Title: {job.get('title')}
-Company: {job.get('company')}
-Description: {(job.get('description') or '')[:800]}
-
-Write a cover letter that:
-- Opens with something specific about the company, not "I am writing to apply for..."
-- Mentions 2-3 concrete achievements with numbers from the experience above
-- Shows genuine understanding of what the company does
-- Is 300-380 words
-- Ends naturally, not with boilerplate CTA
-- Reads like a real person wrote it
-
-Output ONLY the cover letter text."""
-
-    response = _model().generate_content(
-        prompt,
-        generation_config=genai.GenerationConfig(temperature=0.85, max_output_tokens=800),
-    )
-    return response.text.strip()
-
-
-async def generate_follow_up_email(
-    job: dict, profile: dict, days_since: int = 7
-) -> dict:
-    """Short follow-up using Gemini with fallback."""
-    if not settings.GEMINI_API_KEY:
-        return _template_follow_up_email(job, profile, days_since)
-        
-    try:
-        return await _generate_follow_up_email_gemini(job, profile, days_since)
-    except Exception as e:
-        print(f"[Email Gen] Gemini follow up failed, falling back to template: {e}")
-        return _template_follow_up_email(job, profile, days_since)
-
-def _template_follow_up_email(job: dict, profile: dict, days_since: int) -> dict:
+async def generate_follow_up_email(job: dict, profile: dict, days_since: int = 7) -> dict:
     name = profile.get('name', settings.USER_FULL_NAME)
     title = (job.get('title') or 'the role').strip()
     return {
-        "subject": f"Following up on {title}",
-        "body": f"Hi there,\n\nJust following up on my recent application for the {title} role {days_since} days ago. I'm still interested and happy to share relevant projects or any extra details that would help.\n\nThanks,\n{name}"
+        "subject": f"Following up: {title} application - {name}",
+        "body": f"Hi there,\n\nJust following up on my application for the {title} role. I'm still very interested in joining the team and would be happy to provide any extra details or code samples that would help.\n\nThanks,\n{name}\n\n{_contact_signature(profile)}"
     }
-
-async def _generate_follow_up_email_gemini(
-    job: dict, profile: dict, days_since: int = 7
-) -> dict:
-    """Gemini-powered follow-up email generation."""
-    prompt = f"""Write a short follow-up email. The candidate applied {days_since} days ago and hasn't heard back.
-
-Job: {job.get('title')} at {job.get('company')}
-Candidate: {profile.get('name', settings.USER_FULL_NAME)}
-
-Rules:
-- Max 80 words
-- Reference the original application naturally
-- Don't be needy or aggressive
-- Mention one new relevant thought or a project that's relevant
-- Casual, direct tone
-
-Format:
-SUBJECT: [subject]
----
-[body]"""
-
-    response = _model().generate_content(
-        prompt,
-        generation_config=genai.GenerationConfig(temperature=0.8, max_output_tokens=250),
-    )
-    raw = response.text.strip()
-    subject, body = "", raw
-    if "SUBJECT:" in raw and "---" in raw:
-        parts = raw.split("---", 1)
-        subject = parts[0].replace("SUBJECT:", "").strip()
-        body = parts[1].strip()
-    return {"subject": subject, "body": body}

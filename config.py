@@ -76,7 +76,7 @@ class Settings(BaseSettings):
     ADZUNA_APP_KEY: Optional[str] = None
     THE_MUSE_API_KEY: Optional[str] = None
     TWOCAPTCHA_API_KEY: Optional[str] = None
-    MIN_MATCH_SCORE: float = 0.3
+    MIN_MATCH_SCORE: float = 0.15
 
     @field_validator("JOB_TITLES", "JOB_KEYWORDS", "EXCLUDED_COMPANIES", mode="before")
     @classmethod

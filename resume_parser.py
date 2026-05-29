@@ -51,8 +51,14 @@ def extract_raw_text(resume_path: str) -> str:
 
 # ── Gemini-powered structured extraction ─────────────────────────────────────
 
-EXTRACTION_PROMPT = """You are a resume parser. Extract structured information from the resume text below.
-Determine the most relevant job titles and search keywords for this candidate (focus on entry-level/intern/fresher roles as the candidate is a fresh graduate).
+EXTRACTION_PROMPT = """You are a highly skilled Career AI & Resume Strategist.
+Your task is to analyze the candidate's resume and extract structured data, then suggest the best-fit career paths.
+
+CRITICAL INSTRUCTIONS:
+1. Extract ALL "Projects" — these are vital for this fresh graduate. Include project name, description, and tech stack.
+2. Based on the projects and skills, determine the most relevant job titles (e.g., "Full Stack AI Engineer", "LLM Specialist", "Backend Developer").
+3. Generate a list of search keywords that will actually find these jobs on LinkedIn/Indeed (e.g., "RAG", "LangChain", "FastAPI").
+4. Focus strictly on entry-level/intern/fresher roles as the candidate is completing their degree next month.
 
 Return ONLY valid JSON matching this schema:
 {
@@ -60,13 +66,12 @@ Return ONLY valid JSON matching this schema:
   "email": "string or null",
   "phone": "string or null",
   "location": "string or null",
-  "summary": "2-3 sentence professional summary",
+  "summary": "professional summary highlighting AI/Backend capabilities",
   "total_experience_years": 0.0,
   "skills": ["skill1", "skill2"],
-  "experience": [{"company": "string", "title": "string", "duration": "string", "years": 0.0, "bullets": []}],
+  "projects": [{"name": "string", "description": "string", "tech": ["python", "faiss"]}],
+  "experience": [{"company": "string", "title": "string", "duration": "string", "bullets": []}],
   "education": [{"school": "string", "degree": "string", "field": "string", "year": "string"}],
-  "certifications": ["cert1"],
-  "languages": ["English"],
   "suggested_job_titles": ["title1", "title2"],
   "suggested_search_keywords": ["kw1", "kw2"]
 }
@@ -302,6 +307,7 @@ async def save_profile(profile_data: dict, raw_text: str):
         # Flexibly handle different field names from Gemini
         keywords = profile_data.get("suggested_search_keywords") or profile_data.get("keywords") or []
         titles = profile_data.get("suggested_job_titles") or profile_data.get("job_titles") or []
+        projects = profile_data.get("projects") or profile_data.get("notable_projects") or []
 
         profile = ResumeProfile(
             raw_text=raw_text,
@@ -316,6 +322,7 @@ async def save_profile(profile_data: dict, raw_text: str):
             certifications=profile_data.get("certifications", []),
             languages=profile_data.get("languages", []),
             total_experience_years=profile_data.get("total_experience_years", 0),
+            projects=projects,
             suggested_keywords=keywords,
             suggested_titles=titles,
             parsed_at=datetime.utcnow()
@@ -343,6 +350,7 @@ async def load_profile() -> dict | None:
             "education": row.education or [],
             "certifications": row.certifications or [],
             "total_experience_years": row.total_experience_years,
+            "projects": row.projects or [],
             "suggested_keywords": row.suggested_keywords or [],
             "suggested_titles": row.suggested_titles or [],
             "raw_text": row.raw_text,

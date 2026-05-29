@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     # Get key in 30s: aistudio.google.com/app/apikey
     # Free: gemini-1.5-flash → 1,500 req/day | 1M tokens/min
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-1.5-flash"
+    GEMINI_MODEL: str = "gemini-2.0-flash"
 
     # ── Email (Gmail SMTP or SendGrid) ──────────────
     # Gmail SMTP: requires GMAIL_ADDRESS + GMAIL_APP_PASSWORD

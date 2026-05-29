@@ -43,26 +43,56 @@ def make_job_id(source: str, uid: str) -> str:
 
 
 def score_job(job: dict, profile: dict) -> float:
-    """Keyword-based match score prioritizing job titles and core keywords."""
+    """Keyword-based match score prioritizing job titles and core keywords.
+    Strictly penalizes seniority for entry-level candidates.
+    """
     if not profile:
         return 0.5
     skills = {s.lower() for s in profile.get("skills", [])}
     title = job.get("title", "").lower()
     desc = (job.get("description", "") + " " + title).lower()
     
-    # Calculate skill match score (max 0.4)
+    # Base Score (0.0 - 1.0)
+    score = 0.0
+
+    # 1. Skill match (up to 0.4)
     skill_hits = sum(1 for s in skills if s in desc)
     skill_score = min(skill_hits / max(len(skills), 1), 1.0) * 0.4
+    score += skill_score
     
-    # Calculate title match score (max 0.4)
-    title_hits = sum(1 for t in settings.JOB_TITLES if t.lower() in title)
-    title_score = 0.4 if title_hits > 0 else 0.0
+    # 2. Title match (up to 0.4)
+    # Use AI keywords if available
+    target_titles = profile.get("suggested_titles") or settings.JOB_TITLES
+    title_hits = sum(1 for t in target_titles if t.lower() in title)
+    if title_hits > 0:
+        score += 0.4
     
-    # Bonus for main keywords (max 0.2)
-    kw_hits = sum(1 for kw in settings.JOB_KEYWORDS if kw.lower() in desc)
+    # 3. Keyword bonus (up to 0.2)
+    target_keywords = profile.get("suggested_keywords") or settings.JOB_KEYWORDS
+    kw_hits = sum(1 for kw in target_keywords if kw.lower() in desc)
     kw_bonus = min(kw_hits * 0.05, 0.2)
+    score += kw_bonus
+
+    # 4. Seniority Penalty (CRITICAL for entry-level)
+    senior_keywords = ["senior", "sr.", "lead", "staff", "principal", "architect", "manager", "vp", "head", "director"]
+    if any(skw in title for skw in senior_keywords):
+        # Heavily penalize senior roles
+        score -= 0.6
     
-    return min(skill_score + title_score + kw_bonus, 1.0)
+    # 5. Experience Mismatch (Checks description for "X+ years")
+    # If description mentions high years of experience, penalize
+    years_match = re.search(r"(\d+)\s*\+?\s*years?", desc)
+    if years_match:
+        req_years = int(years_match.group(1))
+        if req_years > 2:
+            score -= 0.3
+
+    # 6. Entry-Level Boost
+    entry_keywords = ["junior", "entry", "fresher", "intern", "associate", "graduate"]
+    if any(ekw in title for ekw in entry_keywords):
+        score += 0.2
+
+    return max(0.0, min(score, 1.0))
 
 
 # ── 1. RemoteOK ─────────────────────────────────────────────────────────────

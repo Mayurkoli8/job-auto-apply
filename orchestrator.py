@@ -11,7 +11,7 @@ from typing import List
 from config import settings
 from database import (
     mark_applied, get_stats, AsyncSessionLocal, DailyStats, Job, get_pending_jobs,
-    get_apply_skip_reason,
+    get_apply_skip_reason, job_identity_key,
 )
 from resume_parser import load_profile, parse_and_save_resume
 from job_scraper import scrape_all_jobs

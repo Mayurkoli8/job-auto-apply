@@ -24,6 +24,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 import logging
 from config import settings
+from database import get_all_job_ids, get_all_job_keys, job_identity_key, upsert_job
 
 logger = logging.getLogger("job-bot")
 ua = UserAgent()

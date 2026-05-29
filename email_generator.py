@@ -25,7 +25,7 @@ def _template_cold_email(job: dict, profile: dict) -> dict:
     title = (job.get('title') or 'the role').strip()
     company = job.get('company', 'your company')
 
-    subject = f"AI / Backend Engineer Application - {name} ({title})"
+    subject = f"{title} - {name}"
     body = f"""Hi there,
 
 I recently saw the {title} opening at {company} and wanted to reach out directly.

@@ -8,10 +8,12 @@ from pathlib import Path
 import pdfplumber
 import google.generativeai as genai
 from docx import Document
+import logging
 from config import settings
 from database import ResumeProfile, AsyncSessionLocal
 from datetime import datetime
 
+logger = logging.getLogger("job-bot")
 
 def _configure_gemini():
     genai.configure(api_key=settings.GEMINI_API_KEY)
@@ -236,11 +238,12 @@ def build_fallback_profile(raw_text: str) -> dict:
 
 def parse_resume_with_gemini(raw_text: str) -> dict:
     if not settings.GEMINI_API_KEY:
-        print("[Resume Parser] No GEMINI_API_KEY configured — using fallback parser")
+        logger.warning("No GEMINI_API_KEY configured — using fallback parser")
         return build_fallback_profile(raw_text)
 
     try:
         model = _configure_gemini()
+        logger.info("Sending resume to Gemini for structured extraction...")
         response = model.generate_content(
             EXTRACTION_PROMPT + raw_text,
             generation_config=genai.GenerationConfig(
@@ -250,7 +253,7 @@ def parse_resume_with_gemini(raw_text: str) -> dict:
         )
         content = response.text.strip()
     except Exception as e:
-        print(f"[Resume Parser] Gemini API failure: {e}")
+        logger.error(f"Gemini API failure during resume parse: {e}")
         return build_fallback_profile(raw_text)
 
     # Strip any accidental markdown fences
@@ -282,15 +285,10 @@ def parse_resume_with_gemini(raw_text: str) -> dict:
         try:
             return json.loads(candidate)
         except json.JSONDecodeError as e:
-            # provide concise debug info for each attempt
-            print(f"[Resume Parser] JSON decode attempt {attempt} failed: {e}")
-            if attempt == 1:
-                # show a short snippet only on first failure
-                print(f"[Resume Parser] Snippet: {candidate[:200]}")
+            logger.debug(f"JSON decode attempt {attempt} failed: {e}")
             continue
 
-    # Last resort: give up and use fallback parser
-    print("[Resume Parser] All JSON parsing attempts failed; using fallback parser")
+    logger.warning("All JSON parsing attempts failed; using fallback parser")
     return build_fallback_profile(raw_text)
 
 
@@ -300,6 +298,11 @@ async def save_profile(profile_data: dict, raw_text: str):
     async with AsyncSessionLocal() as session:
         from sqlalchemy import delete
         await session.execute(delete(ResumeProfile))
+        
+        # Flexibly handle different field names from Gemini
+        keywords = profile_data.get("suggested_search_keywords") or profile_data.get("keywords") or []
+        titles = profile_data.get("suggested_job_titles") or profile_data.get("job_titles") or []
+
         profile = ResumeProfile(
             raw_text=raw_text,
             name=profile_data.get("name"),
@@ -313,8 +316,8 @@ async def save_profile(profile_data: dict, raw_text: str):
             certifications=profile_data.get("certifications", []),
             languages=profile_data.get("languages", []),
             total_experience_years=profile_data.get("total_experience_years", 0),
-            suggested_keywords=profile_data.get("suggested_search_keywords", []),
-            suggested_titles=profile_data.get("suggested_job_titles", []),
+            suggested_keywords=keywords,
+            suggested_titles=titles,
             parsed_at=datetime.utcnow()
         )
         session.add(profile)
@@ -348,12 +351,10 @@ async def load_profile() -> dict | None:
 
 async def parse_and_save_resume(resume_path: str = None) -> dict:
     path = resume_path or settings.RESUME_PATH
-    print(f"[Resume] Parsing: {path}")
+    logger.info(f"Parsing resume: {path}")
     raw = extract_raw_text(path)
-    print(f"[Resume] Extracted {len(raw)} chars. Sending to Gemini...")
+    logger.info(f"Extracted {len(raw)} characters from file. Sending to Gemini...")
     profile = parse_resume_with_gemini(raw)
     await save_profile(profile, raw)
-    print(f"[Resume] Parsed: {profile.get('name')} | "
-          f"{len(profile.get('skills', []))} skills | "
-          f"{profile.get('total_experience_years', 0)} yrs exp")
+    logger.info(f"Resume Parse Complete: {profile.get('name')} | {len(profile.get('skills', []))} skills")
     return profile

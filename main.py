@@ -70,6 +70,20 @@ async def lifespan(app: FastAPI):
     run_all()
     init_db()
     setup_scheduler()
+    
+    # Auto-parse the hydrated resume into DB if profile is empty
+    profile = await load_profile()
+    if not profile:
+        logger.info("Database profile empty. Attempting auto-parse of hydrated resume...")
+        try:
+            if Path(settings.RESUME_PATH).exists():
+                await parse_and_save_resume(settings.RESUME_PATH)
+                logger.info("✓ Profile successfully hydrated from resume file.")
+            else:
+                logger.warning("No resume file found at startup to parse.")
+        except Exception as e:
+            logger.error(f"Failed to auto-parse resume at startup: {e}")
+
     logger.info("Application started and database initialized.")
     yield
     scheduler.shutdown()
@@ -136,6 +150,26 @@ async def get_logs(lines: int = 100):
 @app.get("/api/ping")
 async def ping(): return {"pong": True}
 
+@app.post("/api/upload-resume")
+async def upload_resume_manual(file: UploadFile = File(...)):
+    """Upload a PDF or DOCX resume and parse it."""
+    suffix = Path(file.filename).suffix.lower()
+    if suffix not in (".pdf", ".docx", ".doc"):
+        raise HTTPException(400, "Only PDF and DOCX files are supported")
+    
+    Path("uploads").mkdir(exist_ok=True)
+    save_path = f"uploads/resume{suffix}"
+    with open(save_path, "wb") as f:
+        f.write(await file.read())
+    
+    settings.RESUME_PATH = save_path
+    try:
+        profile = await parse_and_save_resume(save_path)
+        return {"success": True, "profile": profile}
+    except Exception as e:
+        logger.error(f"Manual resume parse failed: {e}")
+        return {"success": False, "error": str(e)}
+
 # ── Dashboard UI ──────────────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
@@ -183,6 +217,7 @@ async def dashboard():
       <div class="tab active" onclick="tab('home', this)">Control</div>
       <div class="tab" onclick="tab('logs', this)">Logs</div>
       <div class="tab" onclick="tab('jobs', this)">Jobs</div>
+      <div class="tab" onclick="tab('resume', this)">Resume</div>
     </div>
 
     <div id="p-home" class="pane">
@@ -193,6 +228,14 @@ async def dashboard():
     </div>
     <div id="p-logs" class="pane" style="display: none;"><pre id="log-c"></pre></div>
     <div id="p-jobs" class="pane" style="display: none;"><div id="job-l"></div></div>
+    <div id="p-resume" class="pane" style="display: none;">
+      <h3>Resume Profile</h3>
+      <div id="profile-c" style="margin: 15px 0; font-size: 14px; background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px;">Loading...</div>
+      <hr style="border:0; border-top:1px solid var(--border); margin: 20px 0;">
+      <h3>Update Resume</h3>
+      <input type="file" id="r-file" accept=".pdf,.docx">
+      <button class="btn" onclick="upload()">Parse & Save</button>
+    </div>
   </div>
 
   <script>
@@ -219,6 +262,7 @@ async def dashboard():
       el.classList.add('active');
       if(id === 'logs') loadLogs();
       if(id === 'jobs') loadJobs();
+      if(id === 'resume') loadProfile();
     }
 
     async function refresh() {
@@ -244,6 +288,30 @@ async def dashboard():
     async function loadJobs() {
       const d = await (await fetch('/api/jobs')).json();
       document.getElementById('job-l').innerHTML = d.jobs.map(j => `<div style="padding:10px; border-bottom:1px solid #334155">${j.company} - ${j.title} (${j.status})</div>`).join('');
+    }
+
+    async function loadProfile() {
+      const d = await (await fetch('/api/profile')).json();
+      if(!d.profile) {
+        document.getElementById('profile-c').textContent = "No profile found. Upload resume below.";
+        return;
+      }
+      document.getElementById('profile-c').innerHTML = `
+        <p><strong>Name:</strong> ${d.profile.name}</p>
+        <p><strong>Skills:</strong> ${d.profile.skills.join(', ')}</p>
+        <p><strong>Exp:</strong> ${d.profile.total_experience_years} years</p>
+      `;
+    }
+
+    async function upload() {
+      const file = document.getElementById('r-file').files[0];
+      if(!file) return alert('Select a file');
+      const fd = new FormData(); fd.append('file', file);
+      document.getElementById('profile-c').textContent = "Parsing...";
+      const r = await fetch('/api/upload-resume', {method:'POST', body:fd});
+      const res = await r.json();
+      if(res.success) loadProfile();
+      else alert('Failed: ' + res.error);
     }
 
     async function test() { await fetch('/api/test-email', {method:'POST'}); alert('Test email sent'); }

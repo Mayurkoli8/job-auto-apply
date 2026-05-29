@@ -43,56 +43,64 @@ def make_job_id(source: str, uid: str) -> str:
 
 
 def score_job(job: dict, profile: dict) -> float:
-    """Keyword-based match score prioritizing job titles and core keywords.
-    Strictly penalizes seniority for entry-level candidates.
-    """
+    """Strict domain-aware scoring for entry-level AI/Backend roles."""
     if not profile:
         return 0.5
-    skills = {s.lower() for s in profile.get("skills", [])}
+    
     title = job.get("title", "").lower()
     desc = (job.get("description", "") + " " + title).lower()
     
-    # Base Score (0.0 - 1.0)
+    # 1. STOP-LIST: Instantly reject unrelated domains
+    wrong_domains = [
+        "design", "ux", "ui", "product design", "marketing", "sales", "hr", 
+        "recruiter", "seo", "content writer", "social media", "legal", 
+        "finance", "accountant", "customer support", "salesforce", "wordpress"
+    ]
+    if any(wd in title for wd in wrong_domains):
+        return 0.0
+
+    # 2. REQUIRED-LIST: Must have at least one tech anchor in title or very high skill match
+    tech_anchors = ["ai", "ml", "llm", "rag", "backend", "python", "developer", "engineer", "data", "automation", "agent"]
+    has_tech_anchor = any(ta in title for tech_anchors_ in tech_anchors if (ta := tech_anchors_)) # cleanup
+    # fix: simple any
+    has_tech_anchor = any(ta in title for ta in tech_anchors)
+    
     score = 0.0
 
-    # 1. Skill match (up to 0.4)
+    # 3. Skill match (up to 0.4)
+    skills = {s.lower() for s in profile.get("skills", [])}
     skill_hits = sum(1 for s in skills if s in desc)
     skill_score = min(skill_hits / max(len(skills), 1), 1.0) * 0.4
     score += skill_score
     
-    # 2. Title match (up to 0.4)
-    # Use AI keywords if available
+    # 4. Title match (up to 0.5) - Heavy weight
     target_titles = profile.get("suggested_titles") or settings.JOB_TITLES
     title_hits = sum(1 for t in target_titles if t.lower() in title)
     if title_hits > 0:
-        score += 0.4
+        score += 0.5
+    elif has_tech_anchor:
+        score += 0.2 # partial boost for general tech roles
+    else:
+        return 0.0 # No tech anchor and no title match = rejected
     
-    # 3. Keyword bonus (up to 0.2)
-    target_keywords = profile.get("suggested_keywords") or settings.JOB_KEYWORDS
-    kw_hits = sum(1 for kw in target_keywords if kw.lower() in desc)
-    kw_bonus = min(kw_hits * 0.05, 0.2)
-    score += kw_bonus
-
-    # 4. Seniority Penalty (CRITICAL for entry-level)
-    senior_keywords = ["senior", "sr.", "lead", "staff", "principal", "architect", "manager", "vp", "head", "director"]
-    if any(skw in title for skw in senior_keywords):
-        # Heavily penalize senior roles
-        score -= 0.6
-    
-    # 5. Experience Mismatch (Checks description for "X+ years")
-    # If description mentions high years of experience, penalize
-    years_match = re.search(r"(\d+)\s*\+?\s*years?", desc)
-    if years_match:
-        req_years = int(years_match.group(1))
-        if req_years > 2:
-            score -= 0.3
-
-    # 6. Entry-Level Boost
+    # 5. Entry-Level Context (up to 0.1)
     entry_keywords = ["junior", "entry", "fresher", "intern", "associate", "graduate"]
     if any(ekw in title for ekw in entry_keywords):
-        score += 0.2
+        score += 0.1
 
-    return max(0.0, min(score, 1.0))
+    # 6. Seniority Penalty (Hard Rejection for Entry-Level)
+    senior_keywords = ["senior", "sr.", "lead", "staff", "principal", "architect", "manager", "vp", "head", "director"]
+    if any(skw in title for skw in senior_keywords):
+        return 0.0 # Do not apply to senior roles as a fresher
+
+    # 7. Final Normalization
+    final_score = max(0.0, min(score, 1.0))
+    
+    # If the final score is low, but it's an intern/fresher role in the RIGHT tech, keep it
+    if final_score < 0.2 and any(ekw in title for ekw in entry_keywords) and has_tech_anchor:
+        final_score = 0.21 # Force it above threshold
+        
+    return final_score
 
 
 # ── 1. RemoteOK ─────────────────────────────────────────────────────────────

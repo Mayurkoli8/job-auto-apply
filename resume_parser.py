@@ -248,53 +248,22 @@ def parse_resume_with_gemini(raw_text: str) -> dict:
 
     try:
         model = _configure_gemini()
-        logger.info("Sending resume to Gemini for structured extraction...")
+        logger.info("Sending resume to Gemini (JSON Mode)...")
         response = model.generate_content(
             EXTRACTION_PROMPT + raw_text,
-            generation_config=genai.GenerationConfig(
-                temperature=0.1,
-                max_output_tokens=2000,
-            )
+            generation_config={"response_mime_type": "application/json", "temperature": 0.1}
         )
         content = response.text.strip()
     except Exception as e:
-        logger.error(f"Gemini API failure during resume parse: {e}")
+        logger.error(f"Gemini API failure: {e}")
         return build_fallback_profile(raw_text)
 
-    # Strip any accidental markdown fences
-    content = re.sub(r"^```(?:json)?", "", content).strip()
-    content = re.sub(r"```$", "", content).strip()
-
-    # Try to extract JSON if wrapped in other text
-    json_match = re.search(r'\{.*\}', content, re.DOTALL)
-    if json_match:
-        content = json_match.group(0)
-
-    # Attempt progressive sanitization of Gemini output to handle
-    # common model formatting issues (trailing commas, control chars,
-    # and single-quote strings) before falling back.
-    def _sanitize_candidate(cand: str) -> str:
-        # Remove low-control characters that break JSON parsing
-        cand = re.sub(r'[\x00-\x08\x0b-\x0c\x0e-\x1f]', ' ', cand)
-        # Remove trailing commas before closing braces/brackets
-        cand = re.sub(r',\s*([}\]])', r"\1", cand)
-        # Heuristic: if single quotes are much more common than double
-        # quotes, try converting single->double quotes (models sometimes
-        # emit python-style dicts)
-        if cand.count("'") > cand.count('"'):
-            cand = cand.replace("'", '"')
-        return cand
-
-    # Try raw parse first, then apply sanitizers progressively
-    for attempt, candidate in enumerate([content, _sanitize_candidate(content)], start=1):
-        try:
-            return json.loads(candidate)
-        except json.JSONDecodeError as e:
-            logger.debug(f"JSON decode attempt {attempt} failed: {e}")
-            continue
-
-    logger.warning("All JSON parsing attempts failed; using fallback parser")
-    return build_fallback_profile(raw_text)
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse Gemini JSON: {e}")
+        logger.info(f"Raw Snippet: {content[:300]}")
+        return build_fallback_profile(raw_text)
 
 
 # ── Save to DB ───────────────────────────────────────────────────────────────

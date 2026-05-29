@@ -25,12 +25,12 @@ def _template_cold_email(job: dict, profile: dict) -> dict:
     title = (job.get('title') or 'the role').strip()
     company = job.get('company', 'your company')
 
-    subject = f"AI Engineer Application - {name} ({title})"
+    subject = f"AI / Backend Engineer Application - {name} ({title})"
     body = f"""Hi there,
 
 I recently saw the {title} opening at {company} and wanted to reach out directly.
 
-I'm a Computer Engineering student with a strong background in AI, Backend services, and automation. My recent projects include building FastAPI services, implementing LLM/RAG workflows, and creating automated data pipelines. I focus on shipping practical, production-ready code that solves real business problems.
+I'm a Computer Engineering graduate with a strong background in AI, Backend services, and automation. My recent work includes building FastAPI services, implementing LLM/RAG workflows, and creating automated data pipelines. I focus on shipping practical, production-ready code that solves real business problems.
 
 I believe my technical skills and proactive approach to building AI-assisted tools would be a great addition to the {company} team.
 
@@ -50,7 +50,7 @@ def _template_cover_letter(job: dict, profile: dict) -> str:
     
     return f"""Dear Hiring Team at {company},
 
-I'm writing to express my interest in the {title} position. As a Computer Engineering student focusing on AI and Backend engineering, I have developed a deep understanding of building scalable services and integrating modern AI technologies.
+I'm writing to express my interest in the {title} position. As a Computer Engineering graduate focusing on AI and Backend engineering, I have developed a deep understanding of building scalable services and integrating modern AI technologies.
 
 My hands-on experience includes developing FastAPI applications, fine-tuning LLM implementations, and optimizing RAG workflows for efficient data retrieval. I thrive in environments where I can learn quickly and apply new technologies to shipping practical features.
 

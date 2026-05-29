@@ -443,21 +443,30 @@ def deduplicate(jobs: List[dict], drop_counters: dict | None = None) -> List[dic
 # ── Master scraper ───────────────────────────────────────────────────────────
 
 async def scrape_all_jobs(profile: dict = None) -> List[dict]:
-    keywords = list(set(
-        settings.JOB_TITLES + settings.JOB_KEYWORDS +
-        (profile.get("skills", [])[:10] if profile else [])
-    ))
-    logger.info(f"[Scraper] Searching with {len(keywords)} keywords across all sources...")
+    # Use AI keywords if available, otherwise fallback to settings
+    base_titles = (profile.get("suggested_titles") or settings.JOB_TITLES) if profile else settings.JOB_TITLES
+    base_keywords = (profile.get("suggested_keywords") or settings.JOB_KEYWORDS) if profile else settings.JOB_KEYWORDS
+    
+    # Force entry-level / intern focus
+    entry_level_modifiers = ["fresher", "entry-level", "intern", "junior", "graduate"]
+    
+    # Merge and deduplicate
+    search_titles = list(set(base_titles))
+    search_keywords = list(set(base_keywords + entry_level_modifiers))
+    
+    all_search_terms = list(set(search_titles + search_keywords))
+    
+    logger.info(f"[Scraper] Searching with {len(all_search_terms)} terms (Titles: {search_titles})")
 
     async with httpx.AsyncClient(headers=HEADERS, follow_redirects=True) as client:
         results = await asyncio.gather(
-            scrape_remoteok(client, keywords),
-            scrape_remotive(client, keywords),
-            scrape_weworkremotely(keywords),
-            scrape_the_muse(client, keywords),
-            scrape_adzuna(client, keywords),
-            scrape_indeed(client, keywords),
-            scrape_linkedin(keywords),
+            scrape_remoteok(client, all_search_terms),
+            scrape_remotive(client, all_search_terms),
+            scrape_weworkremotely(all_search_terms),
+            scrape_the_muse(client, all_search_terms),
+            scrape_adzuna(client, all_search_terms),
+            scrape_indeed(client, all_search_terms),
+            scrape_linkedin(all_search_terms),
             return_exceptions=True
         )
 

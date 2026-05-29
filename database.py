@@ -96,6 +96,8 @@ class ResumeProfile(Base):
     certifications        = Column(JSON)
     languages             = Column(JSON)
     total_experience_years= Column(Float)
+    suggested_keywords    = Column(JSON)  # AI generated search keywords
+    suggested_titles      = Column(JSON)  # AI generated search titles
     parsed_at             = Column(DateTime, default=datetime.utcnow)
 
 

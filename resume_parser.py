@@ -50,8 +50,9 @@ def extract_raw_text(resume_path: str) -> str:
 # ── Gemini-powered structured extraction ─────────────────────────────────────
 
 EXTRACTION_PROMPT = """You are a resume parser. Extract structured information from the resume text below.
+Determine the most relevant job titles and search keywords for this candidate (focus on entry-level/intern/fresher roles as the candidate is a fresh graduate).
 
-Return ONLY valid JSON (no markdown, no explanation, no code fences) matching this exact schema:
+Return ONLY valid JSON matching this schema:
 {
   "name": "string",
   "email": "string or null",
@@ -60,29 +61,12 @@ Return ONLY valid JSON (no markdown, no explanation, no code fences) matching th
   "summary": "2-3 sentence professional summary",
   "total_experience_years": 0.0,
   "skills": ["skill1", "skill2"],
-  "experience": [
-    {
-      "company": "string",
-      "title": "string",
-      "duration": "string e.g. Jan 2021 - Present",
-      "years": 0.0,
-      "bullets": ["achievement1", "achievement2"]
-    }
-  ],
-  "education": [
-    {
-      "school": "string",
-      "degree": "string",
-      "field": "string",
-      "year": "string or null"
-    }
-  ],
+  "experience": [{"company": "string", "title": "string", "duration": "string", "years": 0.0, "bullets": []}],
+  "education": [{"school": "string", "degree": "string", "field": "string", "year": "string"}],
   "certifications": ["cert1"],
   "languages": ["English"],
-  "notable_projects": [
-    {"name": "string", "description": "string", "tech": ["tech1"]}
-  ],
-  "keywords": ["keyword1", "keyword2"]
+  "suggested_job_titles": ["title1", "title2"],
+  "suggested_search_keywords": ["kw1", "kw2"]
 }
 
 Resume text:
@@ -329,6 +313,8 @@ async def save_profile(profile_data: dict, raw_text: str):
             certifications=profile_data.get("certifications", []),
             languages=profile_data.get("languages", []),
             total_experience_years=profile_data.get("total_experience_years", 0),
+            suggested_keywords=profile_data.get("suggested_search_keywords", []),
+            suggested_titles=profile_data.get("suggested_job_titles", []),
             parsed_at=datetime.utcnow()
         )
         session.add(profile)
@@ -354,6 +340,8 @@ async def load_profile() -> dict | None:
             "education": row.education or [],
             "certifications": row.certifications or [],
             "total_experience_years": row.total_experience_years,
+            "suggested_keywords": row.suggested_keywords or [],
+            "suggested_titles": row.suggested_titles or [],
             "raw_text": row.raw_text,
         }
 

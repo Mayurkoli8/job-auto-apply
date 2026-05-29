@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     JOB_TITLES: List[str] = ["AI Engineer", "ML Engineer", "Software Engineer"]
     JOB_KEYWORDS: List[str] = ["Python", "Machine Learning", "LLM", "FastAPI"]
     JOB_LOCATION: str = "Remote"
-    EXPERIENCE_LEVEL: str = "mid-level"
+    EXPERIENCE_LEVEL: str = "entry-level"
     MIN_SALARY: int = 0
     EXCLUDED_COMPANIES: List[str] = []
 

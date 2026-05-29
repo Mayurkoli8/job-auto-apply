@@ -298,8 +298,9 @@ async def dashboard():
       }
       document.getElementById('profile-c').innerHTML = `
         <p><strong>Name:</strong> ${d.profile.name}</p>
-        <p><strong>Skills:</strong> ${d.profile.skills.join(', ')}</p>
-        <p><strong>Exp:</strong> ${d.profile.total_experience_years} years</p>
+        <p><strong>Skills:</strong> ${d.profile.skills.slice(0, 15).join(', ')}...</p>
+        <p><strong>AI Suggested Roles:</strong> ${d.profile.suggested_titles ? d.profile.suggested_titles.join(', ') : 'None'}</p>
+        <p><strong>AI Search Keywords:</strong> ${d.profile.suggested_keywords ? d.profile.suggested_keywords.join(', ') : 'None'}</p>
       `;
     }
 
